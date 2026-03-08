@@ -58,9 +58,9 @@ void CloudRenderer::renderClouds(float playerX, float playerY, float playerZ,
   // =========================================================================
   float cloudSpeed = 0.5f;      // Wind scroll speed
   float cloudHeight = 140.0f;   // Y-axis height
-  float cloudThickness = 8.0f; // 4J Studios: 12-block thick cloud layer
-  float qS = 12.0f;             // Vanilla scale. 32 was too large, causing PSP GPU fixed-point overflow
-  int drawDistance = 48;        // 48x48=2304 blocks total. 48*12=576 world size. Fog hides boundary
+  float cloudThickness = 8.0f; // Cloud thickness 
+  float qS = 12.0f;             
+  int drawDistance = 48;        // 48x48=2304 blocks total. 48*12=576 world size.
 
   float tod = m_level->getTimeOfDay();
   float br = cosf(tod * 3.14159265f * 2.0f) * 2.0f + 0.5f;
