@@ -44,10 +44,8 @@ bool PSPRenderer_Init() {
   // Overscan hack: Add 4 pixels to viewport to hide rasterizer gaps at the
   // screen edge
   sceGuViewport(2048, 2048, SCR_WIDTH + 4, SCR_HEIGHT + 4);
-  sceGuDepthRange(
-      50000,
-      10000); // Salvarea hardware clipper-ului de la overflow (Lamecraft hack)
-
+  sceGuDepthRange(50000, 10000); 
+  
   // ScissorJKSFJKFDJKFDSJKFDJK
   sceGuScissor(0, 0, SCR_WIDTH, SCR_HEIGHT);
   sceGuEnable(GU_SCISSOR_TEST);
