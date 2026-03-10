@@ -44,7 +44,10 @@ CXXFLAGS = -O2 -G0 -Wall \
            -fno-exceptions \
            -fno-rtti \
            -DPSP \
-           -D_PSP_FW_VERSION=371
+           -Wno-misleading-indentation \
+           -Wno-unused-function
+
+PSP_FW_VERSION = 600
 
 # Librarii
 LIBS = -lstdc++ \

@@ -383,12 +383,13 @@ void ChunkRenderer::render(float camX, float camY, float camZ) {
 
   sceGuDisable(GU_LIGHTING);
 
-  // Draw inner leaves
+  // Draw inner leaves (Back-to-Front check)
   sceGuEnable(GU_LIGHTING);
   sceGuAmbient(sunAmbient);
   sceGuEnable(GU_ALPHA_TEST);
   sceGuEnable(GU_BLEND);
-  for (int i = 0; i < visibleCount; i++) {
+
+  for (int i = visibleCount - 1; i >= 0; i--) {
     Chunk *c = visibleChunks[i].chunk;
     int sy = visibleChunks[i].subChunkIdx;
     if (c->transFancyTriCount[sy] == 0 || !c->transFancyVertices[sy]) continue;
@@ -400,8 +401,8 @@ void ChunkRenderer::render(float camX, float camY, float camZ) {
                     c->transFancyTriCount[sy], nullptr, c->transFancyVertices[sy]);
   }
 
-  // Draw transparent chunks
-  for (int i = 0; i < visibleCount; i++) {
+  // Draw transparent chunks (Back-to-Front)
+  for (int i = visibleCount - 1; i >= 0; i--) {
     Chunk *c = visibleChunks[i].chunk;
     int sy = visibleChunks[i].subChunkIdx;
     if (c->transTriCount[sy] == 0 || !c->transVertices[sy]) continue;

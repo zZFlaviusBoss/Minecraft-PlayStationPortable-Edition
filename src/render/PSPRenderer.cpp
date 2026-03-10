@@ -30,16 +30,16 @@ static void *vrelptr(unsigned int offset) {
 bool PSPRenderer_Init() {
   // Frame buffer: 512*272*4 bytes = 557056 bytes
   g_fbp0 = vrelptr(0);
-  g_fbp1 = vrelptr(512 * 272 * 4);
-  g_zbp = vrelptr(2 * 512 * 272 * 4);
+  g_fbp1 = vrelptr(BUF_WIDTH * SCR_HEIGHT * 4);
+  g_zbp = vrelptr(2 * BUF_WIDTH * SCR_HEIGHT * 4);
 
   sceGuInit();
   sceGuStart(GU_DIRECT, g_list);
 
   // Display
   sceGuDrawBuffer(GU_PSM_8888, (void *)0, BUF_WIDTH);
-  sceGuDispBuffer(SCR_WIDTH, SCR_HEIGHT, (void *)(512 * 272 * 4), BUF_WIDTH);
-  sceGuDepthBuffer((void *)(2 * 512 * 272 * 4), BUF_WIDTH);
+  sceGuDispBuffer(SCR_WIDTH, SCR_HEIGHT, (void *)(BUF_WIDTH * SCR_HEIGHT * 4), BUF_WIDTH);
+  sceGuDepthBuffer((void *)(2 * BUF_WIDTH * SCR_HEIGHT * 4), BUF_WIDTH);
 
   sceGuOffset(2048 - (SCR_WIDTH / 2), 2048 - (SCR_HEIGHT / 2));
   // Match Revival: no overscan, exact screen dimensions
@@ -96,7 +96,11 @@ void PSPRenderer_BeginFrame(uint32_t skyColor) {
 
   sceGumMatrixMode(GU_PROJECTION);
   sceGumLoadIdentity();
-  sceGumPerspective(70.0f, 480.0f / 272.0f, 0.1f, 1000.0f);
+
+  sceGumPerspective(55.0f, (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.2f, 1000.0f);
+
+  // Guarantee that backface culling is OFF for the terrain
+  sceGuDisable(GU_CULL_FACE);
 
   sceGumMatrixMode(GU_VIEW);
   sceGumLoadIdentity();

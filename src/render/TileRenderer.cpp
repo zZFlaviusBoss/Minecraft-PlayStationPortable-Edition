@@ -84,47 +84,40 @@ bool TileRenderer::tesselateCrossInWorld(uint8_t id, int lx, int ly, int lz, int
 
   Tesselator *t = m_transTess;
 
-  // Diagonal 1: (x0,z0) -> (x1,z1)  front + back
+  // Diagonal 1: (x0,z0) -> (x1,z1)
   t->addQuad(u0, v0, u1, v1, col, col, col, col,
              x0, yt + 1.0f, z0,
              x1, yt + 1.0f, z1,
              x0, yt,        z0,
              x1, yt,        z1);
 
-  t->addQuad(u0, v0, u1, v1, col, col, col, col,
-             x1, yt + 1.0f, z1,
-             x0, yt + 1.0f, z0,
-             x1, yt,        z1,
-             x0, yt,        z0);
-
-  // Diagonal 2: (x0,z1) -> (x1,z0)  front + back
+  // Diagonal 2: (x0,z1) -> (x1,z0)
   t->addQuad(u0, v0, u1, v1, col, col, col, col,
              x0, yt + 1.0f, z1,
              x1, yt + 1.0f, z0,
              x0, yt,        z1,
              x1, yt,        z0);
 
-  t->addQuad(u0, v0, u1, v1, col, col, col, col,
-             x1, yt + 1.0f, z0,
-             x0, yt + 1.0f, z1,
-             x1, yt,        z0,
-             x0, yt,        z1);
-
   return true;
 }
 
 bool TileRenderer::needFace(int lx, int ly, int lz, int cx, int cz, uint8_t id, int dx, int dy, int dz, bool &outIsFancy) {
   int nx = lx + dx, ny = ly + dy, nz = lz + dz;
-  uint8_t nb;
   int wNx = cx * CHUNK_SIZE_X + nx;
   int wNy = ny;
   int wNz = cz * CHUNK_SIZE_Z + nz;
 
-  if (ny < 0 || ny >= CHUNK_SIZE_Y) {
-    nb = BLOCK_AIR;
-  } else {
-    nb = m_level->getBlock(wNx, wNy, wNz);
+  // Cull faces at the bottom of the world (Y=0)
+  if (wNy < 0) return false;
+  if (wNy >= CHUNK_SIZE_Y) return true;
+
+  // Cull faces at the world boundaries (X and Z)
+  if (wNx < 0 || wNx >= WORLD_CHUNKS_X * CHUNK_SIZE_X ||
+      wNz < 0 || wNz >= WORLD_CHUNKS_Z * CHUNK_SIZE_Z) {
+    return false;
   }
+
+  uint8_t nb = m_level->getBlock(wNx, wNy, wNz);
 
   const BlockProps &bp = g_blockProps[id];
 
@@ -261,6 +254,7 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
   float wx = (float)lx;
   float wy = (float)ly;
   float wz = (float)lz;
+
   // World coords for light lookups
   int wX = cx * CHUNK_SIZE_X + lx;
   int wY = ly;
@@ -281,6 +275,8 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
     if (blkL > skyL + 0.05f) return m_emitTess;
     return skyTess;
   };
+
+  // 4J logic to avoid Z-fighting on inner leaves is handled in per-face code
 
   // TOP (+Y)
   if (needFace(lx, ly, lz, cx, cz, id, 0, 1, 0, isFancy)) {
@@ -304,8 +300,9 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
 
     float u0 = uv.top_x*ts+eps, v0 = uv.top_y*ts+eps;
     float u1 = (uv.top_x+1)*ts-eps, v1 = (uv.top_y+1)*ts-eps;
+    float off = isFancy ? 0.005f : 0.0f;
     t->addQuad(u0,v0,u1,v1, c00,c10,c01,c11,
-               wx,wy+1,wz, wx+1,wy+1,wz, wx,wy+1,wz+1, wx+1,wy+1,wz+1);
+               wx+off,wy+1-off,wz+off, wx+1-off,wy+1-off,wz+off, wx+off,wy+1-off,wz+1-off, wx+1-off,wy+1-off,wz+1-off);
     drawn = true;
   }
 
@@ -330,8 +327,9 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
 
     float u0=uv.bot_x*ts+eps, v0=uv.bot_y*ts+eps;
     float u1=(uv.bot_x+1)*ts-eps, v1=(uv.bot_y+1)*ts-eps;
+    float off = isFancy ? 0.005f : 0.0f;
     t->addQuad(u0,v0,u1,v1, c01,c11,c00,c10,
-               wx,wy,wz+1, wx+1,wy,wz+1, wx,wy,wz, wx+1,wy,wz);
+               wx+off,wy+off,wz+1-off, wx+1-off,wy+off,wz+1-off, wx+off,wy+off,wz+off, wx+1-off,wy+off,wz+off);
     drawn = true;
   }
 
@@ -356,8 +354,9 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
 
     float u0=uv.side_x*ts+eps, v0=uv.side_y*ts+eps;
     float u1=(uv.side_x+1)*ts-eps, v1=(uv.side_y+1)*ts-eps;
+    float off = isFancy ? 0.005f : 0.0f;
     t->addQuad(u0,v0,u1,v1, c11,c01,c10,c00,
-               wx+1,wy+1,wz, wx,wy+1,wz, wx+1,wy,wz, wx,wy,wz);
+               wx+1-off,wy+1-off,wz+off, wx+off,wy+1-off,wz+off, wx+1-off,wy+off,wz+off, wx+off,wy+off,wz+off);
     drawn = true;
   }
 
@@ -382,8 +381,9 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
 
     float u0=uv.side_x*ts+eps, v0=uv.side_y*ts+eps;
     float u1=(uv.side_x+1)*ts-eps, v1=(uv.side_y+1)*ts-eps;
+    float off = isFancy ? 0.005f : 0.0f;
     t->addQuad(u0,v0,u1,v1, c01,c11,c00,c10,
-               wx,wy+1,wz+1, wx+1,wy+1,wz+1, wx,wy,wz+1, wx+1,wy,wz+1);
+               wx+off,wy+1-off,wz+1-off, wx+1-off,wy+1-off,wz+1-off, wx+off,wy+off,wz+1-off, wx+1-off,wy+off,wz+1-off);
     drawn = true;
   }
 
@@ -408,8 +408,9 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
 
     float u0=uv.side_x*ts+eps, v0=uv.side_y*ts+eps;
     float u1=(uv.side_x+1)*ts-eps, v1=(uv.side_y+1)*ts-eps;
+    float off = isFancy ? 0.005f : 0.0f;
     t->addQuad(u0,v0,u1,v1, c01,c11,c00,c10,
-               wx,wy+1,wz, wx,wy+1,wz+1, wx,wy,wz, wx,wy,wz+1);
+               wx+off,wy+1-off,wz+off, wx+off,wy+1-off,wz+1-off, wx+off,wy+off,wz+off, wx+off,wy+off,wz+1-off);
     drawn = true;
   }
 
@@ -434,8 +435,9 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
 
     float u0=uv.side_x*ts+eps, v0=uv.side_y*ts+eps;
     float u1=(uv.side_x+1)*ts-eps, v1=(uv.side_y+1)*ts-eps;
+    float off = isFancy ? 0.005f : 0.0f;
     t->addQuad(u0,v0,u1,v1, c11,c01,c10,c00,
-               wx+1,wy+1,wz+1, wx+1,wy+1,wz, wx+1,wy,wz+1, wx+1,wy,wz);
+               wx+1-off,wy+1-off,wz+1-off, wx+1-off,wy+1-off,wz+off, wx+1-off,wy+off,wz+1-off, wx+1-off,wy+off,wz+off);
     drawn = true;
   }
 
