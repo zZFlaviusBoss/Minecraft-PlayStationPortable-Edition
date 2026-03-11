@@ -309,12 +309,13 @@ void ChunkRenderer::render(float camX, float camY, float camZ) {
         float distSq = dx * dx + dy * dy + dz * dz;
 
         AABB box;
-        box.x0 = c->cx * CHUNK_SIZE_X - 1.0f;
-        box.y0 = sy * 16 - 1.0f;
-        box.z0 = c->cz * CHUNK_SIZE_Z - 1.0f;
-        box.x1 = box.x0 + CHUNK_SIZE_X + 2.0f;
-        box.y1 = box.y0 + 16 + 2.0f;
-        box.z1 = box.z0 + CHUNK_SIZE_Z + 2.0f;
+
+        box.x0 = c->cx * CHUNK_SIZE_X - 4.0f;
+        box.y0 = sy * 16 - 4.0f;
+        box.z0 = c->cz * CHUNK_SIZE_Z - 4.0f;
+        box.x1 = c->cx * CHUNK_SIZE_X + CHUNK_SIZE_X + 4.0f;
+        box.y1 = sy * 16 + 16 + 4.0f;
+        box.z1 = c->cz * CHUNK_SIZE_Z + CHUNK_SIZE_Z + 4.0f;
 
         // 3D Cubic Frustum Culling
         if (frustum.testAABB(box) == Frustum::OUTSIDE)
@@ -345,12 +346,10 @@ void ChunkRenderer::render(float camX, float camY, float camZ) {
   uint8_t sunByte = (uint8_t)(sunBr * 0.85f * 255.0f + 0.15f * 255.0f); // [0.15, 1.0]
   uint32_t sunAmbient = (0xFF000000u) | ((uint32_t)sunByte << 16) | ((uint32_t)sunByte << 8) | sunByte;
 
-  // Helper: set model matrix to translate chunk-local vertices to world position
+  // Helper: set model matrix to identity (vertices are already in absolute world space)
   auto setChunkMatrix = [](Chunk *c) {
     sceGumMatrixMode(GU_MODEL);
     sceGumLoadIdentity();
-    ScePspFVector3 t = { (float)(c->cx * CHUNK_SIZE_X), 0.0f, (float)(c->cz * CHUNK_SIZE_Z) };
-    sceGumTranslate(&t);
     sceGumUpdateMatrix();
   };
 
@@ -388,6 +387,7 @@ void ChunkRenderer::render(float camX, float camY, float camZ) {
   sceGuAmbient(sunAmbient);
   sceGuEnable(GU_ALPHA_TEST);
   sceGuEnable(GU_BLEND);
+  sceGuDisable(GU_CULL_FACE); // Allow plants/water to be seen from both sides
 
   for (int i = visibleCount - 1; i >= 0; i--) {
     Chunk *c = visibleChunks[i].chunk;
@@ -412,5 +412,6 @@ void ChunkRenderer::render(float camX, float camY, float camZ) {
                     c->transTriCount[sy], nullptr, c->transVertices[sy]);
   }
 
+  sceGuEnable(GU_CULL_FACE); // Restore CULL_FACE
   sceGuDisable(GU_LIGHTING); // Restore default state
 }

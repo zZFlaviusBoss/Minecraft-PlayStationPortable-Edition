@@ -21,10 +21,10 @@ bool TileRenderer::tesselateCrossInWorld(uint8_t id, int lx, int ly, int lz, int
   int   wY = ly;
   int   wZ = cz * CHUNK_SIZE_Z + lz;
 
-  // Vertex positions in chunk-local space (model matrix handles translation)
-  float xt = (float)lx;
+  // Vertex positions in absolute world space (bypass VFPU translation precision issues)
+  float xt = (float)(cx * CHUNK_SIZE_X + lx);
   float yt = (float)ly;
-  float zt = (float)lz;
+  float zt = (float)(cz * CHUNK_SIZE_Z + lz);
 
   // Random offset constraint
   if (id == BLOCK_TALLGRASS) {
@@ -250,10 +250,10 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
 
   const BlockUV &uv = g_blockUV[id];
 
-  // Vertex positions in chunk-local space
-  float wx = (float)lx;
+  // Vertex positions in absolute world space
+  float wx = (float)(cx * CHUNK_SIZE_X + lx);
   float wy = (float)ly;
-  float wz = (float)lz;
+  float wz = (float)(cz * CHUNK_SIZE_Z + lz);
 
   // World coords for light lookups
   int wX = cx * CHUNK_SIZE_X + lx;

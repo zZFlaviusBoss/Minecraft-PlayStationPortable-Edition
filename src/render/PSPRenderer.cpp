@@ -44,8 +44,8 @@ bool PSPRenderer_Init() {
   sceGuOffset(2048 - (SCR_WIDTH / 2), 2048 - (SCR_HEIGHT / 2));
   // Match Revival: no overscan, exact screen dimensions
   sceGuViewport(2048, 2048, SCR_WIDTH, SCR_HEIGHT);
-  // Standard hardware clip depth mapping
-  sceGuDepthRange(65535, 0);
+  // Hardware clip depth mapping (restricted to avoid VFPU clipping bugs at boundaries)
+  sceGuDepthRange(50000, 10000);
 
   sceGuScissor(0, 0, SCR_WIDTH, SCR_HEIGHT);
   sceGuEnable(GU_SCISSOR_TEST);
@@ -64,8 +64,9 @@ bool PSPRenderer_Init() {
 
   sceGuEnable(GU_CLIP_PLANES);
 
-  // Backface culling off
-  sceGuDisable(GU_CULL_FACE);
+  // Backface culling on (fixes VFPU screen-corner clipping bug)
+  sceGuFrontFace(GU_CCW);
+  sceGuEnable(GU_CULL_FACE);
 
   // Alpha test (for plants/transparents)
   sceGuAlphaFunc(GU_GREATER, 0x80, 0xFF);
@@ -97,10 +98,10 @@ void PSPRenderer_BeginFrame(uint32_t skyColor) {
   sceGumMatrixMode(GU_PROJECTION);
   sceGumLoadIdentity();
 
-  sceGumPerspective(55.0f, (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.2f, 1000.0f);
+  sceGumPerspective(120.0f, (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.005, 156.0f);
 
-  // Guarantee that backface culling is OFF for the terrain
-  sceGuDisable(GU_CULL_FACE);
+  // Ensure backface culling is ON for the terrain (fixes PSP clipping bug)
+  sceGuEnable(GU_CULL_FACE);
 
   sceGumMatrixMode(GU_VIEW);
   sceGumLoadIdentity();

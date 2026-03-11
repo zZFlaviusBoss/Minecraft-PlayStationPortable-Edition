@@ -16,12 +16,13 @@ void BlockHighlight_Draw(int bx, int by, int bz, uint8_t blockId) {
   const float e = 0.002f;
   const BlockProps& props = g_blockProps[blockId];
   
-  float x0 = (float)bx + props.minX - e;
-  float y0 = (float)by + props.minY - e;
-  float z0 = (float)bz + props.minZ - e;
-  float x1 = (float)bx + props.maxX + e;
-  float y1 = (float)by + props.maxY + e;
-  float z1 = (float)bz + props.maxZ + e;
+
+  float x0 = props.minX - e;
+  float y0 = props.minY - e;
+  float z0 = props.minZ - e;
+  float x1 = props.maxX + e;
+  float y1 = props.maxY + e;
+  float z1 = props.maxZ + e;
 
   // 12 edges of a cube = 24 vertices (2 per line)
   static HLVertex lines[24];
@@ -53,6 +54,10 @@ void BlockHighlight_Draw(int bx, int by, int bz, uint8_t blockId) {
 
   sceGumMatrixMode(GU_MODEL);
   sceGumLoadIdentity();
+  
+  // Translate to block position to keep coordinate values small
+  ScePspFVector3 blockPos = { (float)bx, (float)by, (float)bz };
+  sceGumTranslate(&blockPos);
 
   sceGumDrawArray(GU_LINES,
                   GU_VERTEX_32BITF | GU_TRANSFORM_3D,
