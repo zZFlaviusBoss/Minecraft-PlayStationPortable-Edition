@@ -88,9 +88,8 @@ SkyRenderer::SkyRenderer(Level *level) : m_level(level) {
   m_starVertices =
       (SkyVertex *)memalign(16, m_numStarVertices * sizeof(SkyVertex));
 
-  // Build sky box
   int skyIdx = 0;
-  float yy = 16.0f;
+  float yy = 48.0f;
   for (int xx = -s * d; xx < s * d; xx += s) {
     for (int zz = -s * d; zz < s * d; zz += s) {
       m_skyVertices[skyIdx++] = {(float)(xx + 0), yy, (float)(zz + 0)};
@@ -104,9 +103,8 @@ SkyRenderer::SkyRenderer(Level *level) : m_level(level) {
   sceKernelDcacheWritebackInvalidateRange(
       m_skyVertices, m_numSkyVertices * sizeof(SkyPosVertex));
 
-  // Build bottom box
   int botIdx = 0;
-  yy = -16.0f;
+  yy = -48.0f;
   for (int xx = -s * d; xx < s * d; xx += s) {
     for (int zz = -s * d; zz < s * d; zz += s) {
       m_bottomVertices[botIdx++] = {(float)(xx + s), yy, (float)(zz + 0)};
@@ -416,15 +414,6 @@ void SkyRenderer::renderSky(float playerX, float playerY, float playerZ, const S
   sceGuBlendFunc(GU_ADD, GU_SRC_ALPHA, GU_ONE_MINUS_SRC_ALPHA, 0, 0);
   sceGuDepthMask(GU_FALSE);
   sceGuEnable(GU_DEPTH_TEST);
-
-  // 4J horizon calculation
-  // float horizonHeight = 63.0f; // Approx sea level
-  // float playerFromHorizon = playerY - horizonHeight;
-
-  // We don't need to draw the bottom plane anymore.
-  // The PSP clears the background to `horizonCol` (the fog color).
-  // This causes the void to be perfectly seamless without drawing a buggy black box!
-
   sceGumPopMatrix(); // model matrix
 
   // Restore projection
@@ -444,3 +433,4 @@ void SkyRenderer::renderSky(float playerX, float playerY, float playerZ, const S
   // Otherwise chunks will cut off sharply at 64 blocks instead of fading into fog.
   sceGuFog(32.0f, 64.0f, horizonCol);
 }
+

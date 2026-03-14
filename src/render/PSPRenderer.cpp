@@ -98,7 +98,7 @@ void PSPRenderer_BeginFrame(uint32_t skyColor) {
   sceGumMatrixMode(GU_PROJECTION);
   sceGumLoadIdentity();
 
-  sceGumPerspective(120.0f, (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.005, 156.0f);
+  sceGumPerspective(90.0f, (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.2, 256.0f);
 
   // Ensure backface culling is ON for the terrain (fixes PSP clipping bug)
   sceGuEnable(GU_CULL_FACE);
