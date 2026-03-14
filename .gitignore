@@ -1,8 +1,6 @@
 # Build artifacts
 *.o
 *.elf
-*.PBP
-*.SFO
 *.map
 *.prx
 
