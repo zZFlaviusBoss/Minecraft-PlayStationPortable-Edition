@@ -1,0 +1,28 @@
+{
+    "name": "Minecraft PSP Edition Development",
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "features": {
+        "ghcr.io/devcontainers/features/git:1": {
+            "version": "latest"
+        }
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-vscode.cpptools",
+                "ms-vscode.makefile-tools",
+                "pkief.material-icon-theme"
+            ],
+            "settings": {
+                "workbench.iconTheme": "material-icon-theme",
+                "git.autofetch": true
+            }
+        }
+    },
+    "mounts": [
+        "source=${localEnv:HOME}${localEnv:USERPROFILE}/.gitconfig,target=/home/vscode/.gitconfig,type=bind,consistency=cached"
+    ],
+    "remoteUser": "root"
+}
