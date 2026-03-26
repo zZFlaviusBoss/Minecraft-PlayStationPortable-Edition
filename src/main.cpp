@@ -122,9 +122,10 @@ static void game_update(float dt) {
     g_level->tick();
   }
 
+  // Animation for WATER blocks
   static float textureTimer = 0.0f;
   textureTimer += dt;
-  if (textureTimer >= .125f) { 
+  if (textureTimer >= 0.125f) { 
     textureTimer = 0.0f;
     static int textureIdx = 0;
     textureIdx = (textureIdx + 1) % 4;
@@ -138,19 +139,28 @@ static void game_update(float dt) {
     }
 
     g_blockUV[BLOCK_WATER_STILL] = {tx, ty, tx, ty, tx, ty};
+    g_blockUV[BLOCK_WATER_FLOW] = {tx, ty, tx, ty, tx, ty};
 
-    // Mark all chunks dirty to rebuild with new texture
-    for (int cx = 0; cx < WORLD_CHUNKS_X; cx++) {
-      for (int cz = 0; cz < WORLD_CHUNKS_Z; cz++) {
-        Chunk* c = g_level->getChunk(cx, cz);
-        if (c) {
-          for (int sy = 0; sy < 4; sy++) {
-            c->dirty[sy] = true;
+    // ONLY update chunks within a 4-block radius of the player
+    int minCX = (int)(g_player.x - 4.0f) >> 4;
+    int maxCX = (int)(g_player.x + 4.0f) >> 4;
+    int minCZ = (int)(g_player.z - 4.0f) >> 4;
+    int maxCZ = (int)(g_player.z + 4.0f) >> 4;
+
+    for (int cx = minCX; cx <= maxCX; cx++) {
+      for (int cz = minCZ; cz <= maxCZ; cz++) {
+        if (cx >= 0 && cx < WORLD_CHUNKS_X && cz >= 0 && cz < WORLD_CHUNKS_Z) {
+          Chunk* c = g_level->getChunk(cx, cz);
+          if (c) {
+            for (int sy = 0; sy < 4; sy++) {
+              c->dirty[sy] = true;
+            }
           }
         }
       }
     }
   }
+
 
   float moveSpeed = (g_player.isFlying ? 10.0f : 5.0f) * dt;
   float lookSpeed = 120.0f * dt;
