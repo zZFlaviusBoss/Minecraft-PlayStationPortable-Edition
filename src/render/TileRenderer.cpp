@@ -265,6 +265,15 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
   bool drawn = false;
   bool isFancy = false;
 
+  // Water height logic
+  float blockHeight = 1.0f;
+  if (id == BLOCK_WATER_STILL || id == BLOCK_WATER_FLOW) {
+    uint8_t above = m_level->getBlock(wX, wY + 1, wZ);
+    if (above != BLOCK_WATER_STILL && above != BLOCK_WATER_FLOW) {
+      blockHeight = 14.0f / 16.0f; // 2 pixels lower
+    }
+  }
+
   // Select tesselator based on lighting
   auto pickTess = [&](Tesselator *skyTess, Tesselator *fncTess,
                       float skyL, float blkL, bool fancy) -> Tesselator * {
@@ -302,7 +311,7 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
     float u1 = (uv.top_x+1)*ts-eps, v1 = (uv.top_y+1)*ts-eps;
     float off = isFancy ? 0.005f : 0.0f;
     t->addQuad(u0,v0,u1,v1, c00,c10,c01,c11,
-               wx+off,wy+1-off,wz+off, wx+1-off,wy+1-off,wz+off, wx+off,wy+1-off,wz+1-off, wx+1-off,wy+1-off,wz+1-off);
+               wx+off,wy+blockHeight-off,wz+off, wx+1-off,wy+blockHeight-off,wz+off, wx+off,wy+blockHeight-off,wz+1-off, wx+1-off,wy+blockHeight-off,wz+1-off);
     drawn = true;
   }
 
@@ -356,7 +365,7 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
     float u1=(uv.side_x+1)*ts-eps, v1=(uv.side_y+1)*ts-eps;
     float off = isFancy ? 0.005f : 0.0f;
     t->addQuad(u0,v0,u1,v1, c11,c01,c10,c00,
-               wx+1-off,wy+1-off,wz+off, wx+off,wy+1-off,wz+off, wx+1-off,wy+off,wz+off, wx+off,wy+off,wz+off);
+               wx+1-off,wy+blockHeight-off,wz+off, wx+off,wy+blockHeight-off,wz+off, wx+1-off,wy+off,wz+off, wx+off,wy+off,wz+off);
     drawn = true;
   }
 
@@ -383,7 +392,7 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
     float u1=(uv.side_x+1)*ts-eps, v1=(uv.side_y+1)*ts-eps;
     float off = isFancy ? 0.005f : 0.0f;
     t->addQuad(u0,v0,u1,v1, c01,c11,c00,c10,
-               wx+off,wy+1-off,wz+1-off, wx+1-off,wy+1-off,wz+1-off, wx+off,wy+off,wz+1-off, wx+1-off,wy+off,wz+1-off);
+               wx+off,wy+blockHeight-off,wz+1-off, wx+1-off,wy+blockHeight-off,wz+1-off, wx+off,wy+off,wz+1-off, wx+1-off,wy+off,wz+1-off);
     drawn = true;
   }
 
@@ -410,7 +419,7 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
     float u1=(uv.side_x+1)*ts-eps, v1=(uv.side_y+1)*ts-eps;
     float off = isFancy ? 0.005f : 0.0f;
     t->addQuad(u0,v0,u1,v1, c01,c11,c00,c10,
-               wx+off,wy+1-off,wz+off, wx+off,wy+1-off,wz+1-off, wx+off,wy+off,wz+off, wx+off,wy+off,wz+1-off);
+               wx+off,wy+blockHeight-off,wz+off, wx+off,wy+blockHeight-off,wz+1-off, wx+off,wy+off,wz+off, wx+off,wy+off,wz+1-off);
     drawn = true;
   }
 
@@ -437,7 +446,7 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
     float u1=(uv.side_x+1)*ts-eps, v1=(uv.side_y+1)*ts-eps;
     float off = isFancy ? 0.005f : 0.0f;
     t->addQuad(u0,v0,u1,v1, c11,c01,c10,c00,
-               wx+1-off,wy+1-off,wz+1-off, wx+1-off,wy+1-off,wz+off, wx+1-off,wy+off,wz+1-off, wx+1-off,wy+off,wz+off);
+               wx+1-off,wy+blockHeight-off,wz+1-off, wx+1-off,wy+blockHeight-off,wz+off, wx+1-off,wy+off,wz+1-off, wx+1-off,wy+off,wz+off);
     drawn = true;
   }
 
