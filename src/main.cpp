@@ -380,12 +380,32 @@ static void game_render() {
       clearColor = g_skyRenderer->getFogColor(_tod, lookDir);
   }
 
-  PSPRenderer_BeginFrame(clearColor);
+  // Underwater effect
+  uint8_t headBlock = g_level->getBlock((int)floorf(camPos.x), (int)floorf(camPos.y), (int)floorf(camPos.z));
+  bool isUnderwater = (g_blockProps[headBlock].isLiquid() && headBlock != BLOCK_LAVA_FLOW && headBlock != BLOCK_LAVA_STILL);
+
+  float fogNear = 32.0f;
+  float fogFar = 64.0f;
+  uint32_t fogColor = clearColor;
+  float fov = 90.0f;
+
+  if (isUnderwater) {
+    fov = 90.0f * 60.0f / 70.0f;
+    fogNear = 0.1f;
+    fogFar = 20.0f; 
+    // Water fog color (0.4, 0.4, 0.9) -> BGR: 0xFFE56666
+    fogColor = 0xFFE56666;
+    clearColor = fogColor;
+  }
+
+  PSPRenderer_BeginFrame(clearColor, fogNear, fogFar, fogColor, fov);
 
   PSPRenderer_SetCamera(&camPos, &lookAt);
 
-  if (g_skyRenderer)
+  if (g_skyRenderer) {
     g_skyRenderer->renderSky(g_player.x, g_player.y, g_player.z, lookDir);
+    sceGuFog(fogNear, fogFar, fogColor);
+  }
 
   // Render chunks
   g_chunkRenderer->render(g_player.x, g_player.y, g_player.z);
