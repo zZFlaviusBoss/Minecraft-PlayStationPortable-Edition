@@ -262,7 +262,7 @@ static void game_update(float dt) {
       g_player.jumpDoubleTapTimer = 0.0f;
     } else {
       if (!g_player.isFlying && !inWater && g_player.onGround) {
-        g_player.velY = 7.0f;
+        g_player.velY = 6.7f;
         g_player.onGround = false;
       }
       g_player.jumpDoubleTapTimer = DOUBLE_TAP_WINDOW;
