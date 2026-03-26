@@ -53,7 +53,7 @@ CloudRenderer::~CloudRenderer() {
 
 void CloudRenderer::renderClouds(float playerX, float playerY, float playerZ,
                                  float alpha) {
-  float cloudSpeed = 0.5f;
+  float cloudSpeed = 0.0375f;
   float cloudHeight = 140.0f;
   float cloudThickness = 8.0f;
   float qS = 12.0f;

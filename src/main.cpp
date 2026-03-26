@@ -122,7 +122,54 @@ static void game_update(float dt) {
     g_level->tick();
   }
 
+  // Animation for WATER blocks
+  static float textureTimer = 0.0f;
+  textureTimer += dt;
+  if (textureTimer >= 0.125f) { 
+    textureTimer = 0.0f;
+    static int textureIdx = 0;
+    textureIdx = (textureIdx + 1) % 4;
+
+    uint8_t tx = 13, ty = 12;
+    switch (textureIdx) {
+      case 0: tx = 13; ty = 12; break; 
+      case 1: tx = 14; ty = 12; break;
+      case 2: tx = 15; ty = 12; break;
+      case 3: tx = 14; ty = 13; break;
+    }
+
+    g_blockUV[BLOCK_WATER_STILL] = {tx, ty, tx, ty, tx, ty};
+    g_blockUV[BLOCK_WATER_FLOW] = {tx, ty, tx, ty, tx, ty};
+
+    // ONLY update chunks within a 4-block radius of the player
+    int minCX = (int)(g_player.x - 4.0f) >> 4;
+    int maxCX = (int)(g_player.x + 4.0f) >> 4;
+    int minCZ = (int)(g_player.z - 4.0f) >> 4;
+    int maxCZ = (int)(g_player.z + 4.0f) >> 4;
+
+    for (int cx = minCX; cx <= maxCX; cx++) {
+      for (int cz = minCZ; cz <= maxCZ; cz++) {
+        if (cx >= 0 && cx < WORLD_CHUNKS_X && cz >= 0 && cz < WORLD_CHUNKS_Z) {
+          Chunk* c = g_level->getChunk(cx, cz);
+          if (c) {
+            for (int sy = 0; sy < 4; sy++) {
+              c->dirty[sy] = true;
+            }
+          }
+        }
+      }
+    }
+  }
+
+
+  // Check if player is in water
+  uint8_t feetBlock = g_level->getBlock((int)floorf(g_player.x), (int)floorf(g_player.y), (int)floorf(g_player.z));
+  uint8_t headBlock = g_level->getBlock((int)floorf(g_player.x), (int)floorf(g_player.y + 1.6f), (int)floorf(g_player.z));
+  bool inWater = g_blockProps[feetBlock].isLiquid() || g_blockProps[headBlock].isLiquid();
+
   float moveSpeed = (g_player.isFlying ? 10.0f : 5.0f) * dt;
+  if (inWater && !g_player.isFlying) moveSpeed *= 0.6f;
+
   float lookSpeed = 120.0f * dt;
 
   // Rotation with right stick (Face Buttons)
@@ -153,6 +200,16 @@ static void game_update(float dt) {
     if (PSPInput_IsHeld(PSP_CTRL_DOWN))
       dy = -flySpeed;  // Descend
     g_player.velY = 0.0f;
+  } else if (inWater) {
+    // Sink/Float physics
+    if (PSPInput_IsHeld(PSP_CTRL_SELECT)) {
+      g_player.velY += 10.0f * dt; // Float up
+      if (g_player.velY > 3.0f) g_player.velY = 3.0f;
+    } else {
+      g_player.velY -= 5.0f * dt; // Sink slowly
+      if (g_player.velY < -2.0f) g_player.velY = -2.0f;
+    }
+    dy = g_player.velY * dt;
   } else {
     g_player.velY -= 20.0f * dt;
     dy = g_player.velY * dt;
@@ -204,8 +261,8 @@ static void game_update(float dt) {
       g_player.velY = 0.0f;
       g_player.jumpDoubleTapTimer = 0.0f;
     } else {
-      if (!g_player.isFlying && g_player.onGround) {
-        g_player.velY = 6.5f;
+      if (!g_player.isFlying && !inWater && g_player.onGround) {
+        g_player.velY = 6.7f;
         g_player.onGround = false;
       }
       g_player.jumpDoubleTapTimer = DOUBLE_TAP_WINDOW;
@@ -380,12 +437,32 @@ static void game_render() {
       clearColor = g_skyRenderer->getFogColor(_tod, lookDir);
   }
 
-  PSPRenderer_BeginFrame(clearColor);
+  // Underwater effect
+  uint8_t headBlock = g_level->getBlock((int)floorf(camPos.x), (int)floorf(camPos.y), (int)floorf(camPos.z));
+  bool isUnderwater = (g_blockProps[headBlock].isLiquid() && headBlock != BLOCK_LAVA_FLOW && headBlock != BLOCK_LAVA_STILL);
+
+  float fogNear = 32.0f;
+  float fogFar = 64.0f;
+  uint32_t fogColor = clearColor;
+  float fov = 90.0f;
+
+  if (isUnderwater) {
+    fov = 90.0f * 60.0f / 70.0f;
+    fogNear = 0.1f;
+    fogFar = 20.0f; 
+    // Water fog color (0.4, 0.4, 0.9) -> BGR: 0xFFE56666
+    fogColor = 0xFFE56666;
+    clearColor = fogColor;
+  }
+
+  PSPRenderer_BeginFrame(clearColor, fogNear, fogFar, fogColor, fov);
 
   PSPRenderer_SetCamera(&camPos, &lookAt);
 
-  if (g_skyRenderer)
+  if (g_skyRenderer) {
     g_skyRenderer->renderSky(g_player.x, g_player.y, g_player.z, lookDir);
+    sceGuFog(fogNear, fogFar, fogColor);
+  }
 
   // Render chunks
   g_chunkRenderer->render(g_player.x, g_player.y, g_player.z);
