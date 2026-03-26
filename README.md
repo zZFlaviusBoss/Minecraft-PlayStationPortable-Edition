@@ -35,5 +35,8 @@ This is a massive passion project and **anyone who wants to contribute is welcom
 
 **Note on AI Tools:** Working with LLMs (ChatGPT, Claude, etc.) to write code is completely acceptable and welcome, as long as it's not the biggest "slop" possible. Please review, test, and understand the code you submit before opening a Pull Request.
 
+## Contributors
+- [Gabriel Araujo (dotrujos)](https://github.com/dotrujos) - Docker devcontainer support
+
 ## Disclaimer
 This project is made for educational, technical, and preservation purposes only. All rights, trademarks, and copyright to *Minecraft* belong to **Mojang Studios** and **Microsoft**. 
