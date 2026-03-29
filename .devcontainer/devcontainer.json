@@ -13,7 +13,8 @@
             "extensions": [
                 "ms-vscode.cpptools",
                 "ms-vscode.makefile-tools",
-                "pkief.material-icon-theme"
+                "pkief.material-icon-theme",
+                "ms-vscode.cmake-tools"
             ],
             "settings": {
                 "workbench.iconTheme": "material-icon-theme",

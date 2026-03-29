@@ -6,8 +6,13 @@
 
 # Executables
 MinecraftPSP
+EBOOT.PBP
+PARAM.SFO
 
 # Temporary files
 *~
 *.swp
 *.bak
+
+# CMake
+build/
