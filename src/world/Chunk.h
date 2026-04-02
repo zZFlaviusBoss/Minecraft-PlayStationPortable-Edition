@@ -28,6 +28,7 @@ struct Chunk {
   int transFancyCapacity[4];
   int emitCapacity[4];
   bool dirty[4]; // Track dirty state per Sub-Chunk
+  uint8_t priority[4]; // Determines async queue priority. High = compile first
 
   Chunk();
   ~Chunk();

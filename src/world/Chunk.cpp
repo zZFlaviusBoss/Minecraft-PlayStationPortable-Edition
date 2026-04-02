@@ -18,6 +18,7 @@ Chunk::Chunk() : cx(0), cz(0) {
     transCapacity[i] = 0;
     transFancyCapacity[i] = 0;
     emitCapacity[i] = 0;
+    priority[i] = 0;
   }
   memset(blocks, BLOCK_AIR, sizeof(blocks));
   memset(light, 0, sizeof(light));

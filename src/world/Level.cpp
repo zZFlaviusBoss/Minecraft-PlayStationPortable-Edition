@@ -27,26 +27,37 @@ Chunk* Level::getChunk(int cx, int cz) const {
   return m_chunks[cx][cz];
 }
 
-void Level::markDirty(int wx, int wy, int wz) {
+void Level::markDirty(int wx, int wy, int wz, uint8_t priority, bool spreadNeighbors) {
   int cx = wx >> 4;
   int cz = wz >> 4;
   int sy = wy >> 4;
   if (cx >= 0 && cx < WORLD_CHUNKS_X && cz >= 0 && cz < WORLD_CHUNKS_Z && sy >= 0 && sy < 4) {
+    if (priority > m_chunks[cx][cz]->priority[sy]) m_chunks[cx][cz]->priority[sy] = priority;
     m_chunks[cx][cz]->dirty[sy] = true;
     
-    // Dirty neighbor subchunks
-    int lx = wx & 0xF;
-    int lz = wz & 0xF;
-    int ly = wy & 0xF;
-    
-    if (lx == 0 && cx > 0) m_chunks[cx - 1][cz]->dirty[sy] = true;
-    if (lx == 15 && cx < WORLD_CHUNKS_X - 1) m_chunks[cx + 1][cz]->dirty[sy] = true;
-    if (lz == 0 && cz > 0) m_chunks[cx][cz - 1]->dirty[sy] = true;
-    if (lz == 15 && cz < WORLD_CHUNKS_Z - 1) m_chunks[cx][cz + 1]->dirty[sy] = true;
-    if (ly == 0 && sy > 0) m_chunks[cx][cz]->dirty[sy - 1] = true;
-    if (ly == 15 && sy < 3) m_chunks[cx][cz]->dirty[sy + 1] = true;
+    if (spreadNeighbors) {
+      // Dirty neighbor subchunks
+      int lx = wx & 0xF;
+      int lz = wz & 0xF;
+      int ly = wy & 0xF;
+      
+      auto markNeighbor = [&](int ncx, int ncz, int nsy) {
+        if (ncx >= 0 && ncx < WORLD_CHUNKS_X && ncz >= 0 && ncz < WORLD_CHUNKS_Z && nsy >= 0 && nsy < 4) {
+          if (priority > m_chunks[ncx][ncz]->priority[nsy]) m_chunks[ncx][ncz]->priority[nsy] = priority;
+          m_chunks[ncx][ncz]->dirty[nsy] = true;
+        }
+      };
+
+      if (lx == 0) markNeighbor(cx - 1, cz, sy);
+      if (lx == 15) markNeighbor(cx + 1, cz, sy);
+      if (lz == 0) markNeighbor(cx, cz - 1, sy);
+      if (lz == 15) markNeighbor(cx, cz + 1, sy);
+      if (ly == 0) markNeighbor(cx, cz, sy - 1);
+      if (ly == 15) markNeighbor(cx, cz, sy + 1);
+    }
   }
 }
+
 
 uint8_t Level::getBlock(int wx, int wy, int wz) const {
   int cx = wx >> 4;

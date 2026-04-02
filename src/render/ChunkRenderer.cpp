@@ -47,7 +47,6 @@ void ChunkRenderer::processCompileQueue(float camX, float camY, float camZ) {
     // Find closest dirty subchunk
     Chunk *closestDirty = nullptr;
     int closestDirtySy = -1;
-    float closestDirtyDistSq = 9999999.0f;
 
     for (int cx = 0; cx < WORLD_CHUNKS_X; cx++) {
       for (int cz = 0; cz < WORLD_CHUNKS_Z; cz++) {
@@ -62,8 +61,14 @@ void ChunkRenderer::processCompileQueue(float camX, float camY, float camZ) {
               float dy = chunkCenterY - camY;
               float dz = chunkCenterZ - camZ;
               float distSq = dx * dx + dy * dy + dz * dz;
-              if (distSq < closestDirtyDistSq) {
-                closestDirtyDistSq = distSq;
+              
+              // Score-based selection: priority overrides distance
+              float score = (float)c->priority[sy] * 1000000.0f - distSq;
+              static float bestScore = -99999999.0f;
+              if (closestDirty == nullptr) bestScore = -99999999.0f;
+
+              if (score > bestScore) {
+                bestScore = score;
                 closestDirty = c;
                 closestDirtySy = sy;
               }
@@ -111,6 +116,7 @@ void ChunkRenderer::processCompileQueue(float camX, float camY, float camZ) {
     int sy = m_compileSy;
 
     c->dirty[sy] = false;
+    c->priority[sy] = 0; // Reset priority after compilation
 
     c->opaqueTriCount[sy] = m_opaqueTess.end();
     c->transTriCount[sy] = m_transTess.end();
@@ -120,7 +126,7 @@ void ChunkRenderer::processCompileQueue(float camX, float camY, float camZ) {
     if (c->opaqueTriCount[sy] > 0) {
       if (c->opaqueTriCount[sy] > c->opaqueCapacity[sy]) {
         if (c->opaqueVertices[sy]) free(c->opaqueVertices[sy]);
-        c->opaqueCapacity[sy] = c->opaqueTriCount[sy] + 250; 
+        c->opaqueCapacity[sy] = c->opaqueTriCount[sy] + (c->opaqueTriCount[sy] >> 1) + 128; 
         c->opaqueVertices[sy] = (CraftPSPVertex *)memalign(16, c->opaqueCapacity[sy] * sizeof(CraftPSPVertex));
       }
       if (c->opaqueVertices[sy]) {
@@ -136,7 +142,7 @@ void ChunkRenderer::processCompileQueue(float camX, float camY, float camZ) {
     if (c->transTriCount[sy] > 0) {
       if (c->transTriCount[sy] > c->transCapacity[sy]) {
         if (c->transVertices[sy]) free(c->transVertices[sy]);
-        c->transCapacity[sy] = c->transTriCount[sy] + 250;
+        c->transCapacity[sy] = c->transTriCount[sy] + (c->transTriCount[sy] >> 1) + 128;
         c->transVertices[sy] = (CraftPSPVertex *)memalign(16, c->transCapacity[sy] * sizeof(CraftPSPVertex));
       }
       if (c->transVertices[sy]) {
@@ -152,7 +158,7 @@ void ChunkRenderer::processCompileQueue(float camX, float camY, float camZ) {
     if (c->transFancyTriCount[sy] > 0) {
       if (c->transFancyTriCount[sy] > c->transFancyCapacity[sy]) {
         if (c->transFancyVertices[sy]) free(c->transFancyVertices[sy]);
-        c->transFancyCapacity[sy] = c->transFancyTriCount[sy] + 250;
+        c->transFancyCapacity[sy] = c->transFancyTriCount[sy] + (c->transFancyTriCount[sy] >> 1) + 128;
         c->transFancyVertices[sy] = (CraftPSPVertex *)memalign(16, c->transFancyCapacity[sy] * sizeof(CraftPSPVertex));
       }
       if (c->transFancyVertices[sy]) {
@@ -169,7 +175,7 @@ void ChunkRenderer::processCompileQueue(float camX, float camY, float camZ) {
     if (c->emitTriCount[sy] > 0) {
       if (c->emitTriCount[sy] > c->emitCapacity[sy]) {
         if (c->emitVertices[sy]) free(c->emitVertices[sy]);
-        c->emitCapacity[sy] = c->emitTriCount[sy] + 100;
+        c->emitCapacity[sy] = c->emitTriCount[sy] + (c->emitTriCount[sy] >> 1) + 128;
         c->emitVertices[sy] = (CraftPSPVertex *)memalign(16, c->emitCapacity[sy] * sizeof(CraftPSPVertex));
       }
       if (c->emitVertices[sy]) {
@@ -197,6 +203,7 @@ void ChunkRenderer::processCompileQueue(float camX, float camY, float camZ) {
 static void flushSubChunk(Chunk *c, int sy,
                           Tesselator &opT, Tesselator &trT, Tesselator &tfT, Tesselator &emT) {
   c->dirty[sy] = false;
+  c->priority[sy] = 0;
 
   c->opaqueTriCount[sy] = opT.end();
   c->transTriCount[sy]  = trT.end();
@@ -207,7 +214,7 @@ static void flushSubChunk(Chunk *c, int sy,
     if (count <= 0) return;
     if (count > cap) {
       if (buf) free(buf);
-      cap = count + 250;
+      cap = count + (count >> 1) + 128;
       buf = (CraftPSPVertex *)memalign(16, cap * sizeof(CraftPSPVertex));
     }
     if (buf) {

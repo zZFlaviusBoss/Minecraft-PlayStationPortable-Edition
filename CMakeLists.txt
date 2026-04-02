@@ -57,6 +57,7 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     src/render/*.cpp
     src/math/*.cpp
     src/input/*.cpp
+    src/ui/*.cpp
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})

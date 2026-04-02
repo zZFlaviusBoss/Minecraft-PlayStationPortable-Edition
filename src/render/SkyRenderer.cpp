@@ -89,7 +89,7 @@ SkyRenderer::SkyRenderer(Level *level) : m_level(level) {
       (SkyVertex *)memalign(16, m_numStarVertices * sizeof(SkyVertex));
 
   int skyIdx = 0;
-  float yy = 48.0f;
+  float yy = 16.0f;
   for (int xx = -s * d; xx < s * d; xx += s) {
     for (int zz = -s * d; zz < s * d; zz += s) {
       m_skyVertices[skyIdx++] = {(float)(xx + 0), yy, (float)(zz + 0)};
@@ -104,7 +104,7 @@ SkyRenderer::SkyRenderer(Level *level) : m_level(level) {
       m_skyVertices, m_numSkyVertices * sizeof(SkyPosVertex));
 
   int botIdx = 0;
-  yy = -48.0f;
+  yy = -16.0f;
   for (int xx = -s * d; xx < s * d; xx += s) {
     for (int zz = -s * d; zz < s * d; zz += s) {
       m_bottomVertices[botIdx++] = {(float)(xx + s), yy, (float)(zz + 0)};
@@ -128,7 +128,7 @@ SkyRenderer::SkyRenderer(Level *level) : m_level(level) {
     float y = random.nextFloat() * 2.0f - 1.0f;
     float z = random.nextFloat() * 2.0f - 1.0f;
 
-    float ss = 0.15f + random.nextFloat() * 0.1f;
+    float ss = 0.28f + random.nextFloat() * 0.1f;
 
     float d_sq = x * x + y * y + z * z;
     if (d_sq < 1.0f && d_sq > 0.01f) {
@@ -149,8 +149,8 @@ SkyRenderer::SkyRenderer(Level *level) : m_level(level) {
       float xSin = sinf(xRot);
       float xCos = cosf(xRot);
 
-      // Z-axis rotation
-      float zRot = random.nextFloat() * PI * 2.0f;
+      // Z-axis rotation must use nextDouble() to match Vanilla/4J RNG consumption
+      float zRot = (float)(random.nextDouble() * PI * 2.0);
       float zSin = sinf(zRot);
       float zCos = cosf(zRot);
 
@@ -304,7 +304,9 @@ void SkyRenderer::renderSky(float playerX, float playerY, float playerZ, const S
   uint32_t horizonCol = getFogColor(timeOfDay, lookDir);
 
   sceGuClearColor(horizonCol);
-  sceGuFog(40.0f, 120.0f, horizonCol);
+  // Sky geometry is at y=+/-16. Need wide fog to cover even grazing angles.
+  // At 5 deg elevation: 16/sin(5deg)=184u, so fog end >184 ensures full coverage.
+  sceGuFog(0.0f, 200.0f, horizonCol);
 
   // Use wider near clip for sky to avoid hardware cutouts
   sceGumMatrixMode(GU_PROJECTION);
@@ -329,6 +331,20 @@ void SkyRenderer::renderSky(float playerX, float playerY, float playerZ, const S
   sceGuEnable(GU_FOG);
   sceGumDrawArray(GU_TRIANGLES, GU_VERTEX_32BITF | GU_TRANSFORM_3D,
                   m_numSkyVertices, 0, m_skyVertices);
+
+  // Bottom void plane — 4jcraft formula: sr*0.2+0.04, sg*0.2+0.04, sb*0.6+0.1
+  {
+    float sr = ((skyCol >>  0) & 0xFF) / 255.0f;
+    float sg = ((skyCol >>  8) & 0xFF) / 255.0f;
+    float sb = ((skyCol >> 16) & 0xFF) / 255.0f;
+    uint8_t dr = (uint8_t)((sr * 0.2f + 0.04f) * 255.0f);
+    uint8_t dg = (uint8_t)((sg * 0.2f + 0.04f) * 255.0f);
+    uint8_t db = (uint8_t)((sb * 0.6f + 0.10f) * 255.0f);
+    uint32_t darkCol = 0xFF000000 | ((uint32_t)db << 16) | ((uint32_t)dg << 8) | dr;
+    sceGuColor(darkCol);
+    sceGumDrawArray(GU_TRIANGLES, GU_VERTEX_32BITF | GU_TRANSFORM_3D,
+                    m_numBottomVertices, 0, m_bottomVertices);
+  }
   sceGuEnable(GU_CULL_FACE);
 
   sceGuDisable(GU_FOG);

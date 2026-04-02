@@ -22,7 +22,7 @@ public:
   void updateSkyLight(int wx, int wy, int wz, uint8_t oldLight, uint8_t newLight);
 
   Chunk *getChunk(int cx, int cz) const;
-  void markDirty(int wx, int wy, int wz);
+  void markDirty(int wx, int wy, int wz, uint8_t priority = 0, bool spreadNeighbors = true);
 
   uint8_t getBlock(int wx, int wy, int wz) const;
   void setBlock(int wx, int wy, int wz, uint8_t id);

@@ -10,7 +10,7 @@ public:
   CloudRenderer(Level *level);
   ~CloudRenderer();
 
-  void renderClouds(float playerX, float playerY, float playerZ, float alpha);
+  void renderClouds(float playerX, float playerY, float playerZ, float alpha, uint32_t fogColor);
 
 private:
   Level *m_level;

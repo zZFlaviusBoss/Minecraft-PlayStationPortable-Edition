@@ -52,10 +52,10 @@ CloudRenderer::~CloudRenderer() {
 }
 
 void CloudRenderer::renderClouds(float playerX, float playerY, float playerZ,
-                                 float alpha) {
+                                 float alpha, uint32_t fogColor) {
   float cloudSpeed = 0.0375f;
-  float cloudHeight = 140.0f;
-  float cloudThickness = 8.0f;
+  float cloudHeight = 108.0f;   // 4J genDepth = 108
+  float cloudThickness = 4.0f;  // 4J h = 4
   float qS = 12.0f;
   int drawDistance = 48;
 
@@ -222,26 +222,13 @@ void CloudRenderer::renderClouds(float playerX, float playerY, float playerZ,
 
   m_cloudsTex.bind();
 
-  // Fog color
-  float f = cosf(tod * 3.14159265f * 2.0f);
-  float brSky = f * 2.0f + 0.5f;
-  if (brSky < 0.0f)
-    brSky = 0.0f;
-  if (brSky > 1.0f)
-    brSky = 1.0f;
-
-  float fogR = 0.5f * brSky;
-  float fogG = 0.675f * brSky;
-  float fogB = brSky;
-
-  uint32_t fogColor = 0xFF000000 | ((uint8_t)(fogB * 255.0f) << 16) |
-                      ((uint8_t)(fogG * 255.0f) << 8) |
-                      (uint8_t)(fogR * 255.0f);
-
   // Setup hardware fog for clouds
   sceGuEnable(GU_FOG);
-  float farFog = (float)(drawDistance / 2) * qS;
-  sceGuFog(farFog * 0.5f, farFog * 0.9f, fogColor);
+  float distToCloud = fabsf(cloudHeight - playerY);
+  float cloudFogNear = distToCloud * 0.8f;
+  if (cloudFogNear < 32.0f) cloudFogNear = 32.0f;
+  float cloudFogFar = distToCloud + 64.0f;
+  sceGuFog(cloudFogNear, cloudFogFar, fogColor);
   sceGuEnable(GU_CULL_FACE);
   sceGuEnable(GU_BLEND);
   sceGuBlendFunc(GU_ADD, GU_SRC_ALPHA, GU_ONE_MINUS_SRC_ALPHA, 0, 0);
