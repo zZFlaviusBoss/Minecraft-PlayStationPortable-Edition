@@ -6,7 +6,9 @@
 #include <pspgu.h>
 #include <pspiofilemgr.h>
 #include <pspkernel.h>
+#include <psprtc.h>
 #include <string.h>
+#include <stdlib.h>
 
 namespace {
 
@@ -92,7 +94,14 @@ void ConsoleMainMenu::loadSplash() {
   if (lineCount <= 0) {
     strcpy(m_splashStorage, "Minecraft PSP!");
   } else {
-    int idx = (int)(sceKernelGetSystemTimeWide() % lineCount);
+    static bool s_seeded = false;
+    if (!s_seeded) {
+      u64 tick;
+      sceRtcGetCurrentTick(&tick);
+      srand((unsigned int)(tick ^ sceKernelGetSystemTimeLow()));
+      s_seeded = true;
+    }
+    int idx = rand() % lineCount;
     strncpy(m_splashStorage, buf + lineStarts[idx], sizeof(m_splashStorage) - 1);
     m_splashStorage[sizeof(m_splashStorage) - 1] = '\0';
   }
@@ -188,17 +197,18 @@ void ConsoleMainMenu::render(int screenWidth, int screenHeight) {
 
     float scale = 272.0f / ph;
     float scaledTotalW = totalW * scale;
+
     float scrollPx = fmodf(m_scrollOffset * 30.0f, scaledTotalW);
 
-    float clampU0_L = 0.0f, clampU1_L = pLw;
-    float clampU0_R = 0.0f, clampU1_R = pRw;
-    float clampV0 = 0.0f, clampV1 = ph;
+    float clampU0_L = 0.0f, clampU1_L = pLw - 0.5f;
+    float clampU0_R = 0.0f, clampU1_R = pRw - 0.5f;
+    float clampV0 = 0.0f, clampV1 = ph - 0.5f;
 
     for (int pass = 0; pass < 2; pass++) {
       float baseX = -scrollPx + pass * scaledTotalW;
 
       float lx = baseX;
-      float lw = pLw * scale + 1.0f; // +1px overlap hides bilinear dark fringe from pow2 padding
+      float lw = pLw * scale; 
       if (lx + lw > 0 && lx < 480) {
         m_texPanoL.bind();
         sceGuTexFilter(GU_LINEAR, GU_LINEAR);
@@ -207,8 +217,8 @@ void ConsoleMainMenu::render(int screenWidth, int screenHeight) {
                    clampV1, 0xFFFFFFFF);
       }
 
-      float rx = baseX + pLw * scale; // Right image starts at exact join 
-      float rw = pRw * scale + 1.0f;  // +1px overlap on right image too
+      float rx = baseX + pLw * scale; 
+      float rw = pRw * scale;  
       if (rx + rw > 0 && rx < 480) {
         m_texPanoR.bind();
         sceGuTexFilter(GU_LINEAR, GU_LINEAR);
