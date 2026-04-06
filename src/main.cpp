@@ -17,6 +17,7 @@
 #include "render/SkyRenderer.h"
 #include "render/TextureAtlas.h"
 #include "ui/ConsoleMainMenu.h"
+#include "ui/WorldLoadingScreen.h"
 #include "world/AABB.h"
 #include "world/Blocks.h"
 #include "world/Level.h"
@@ -62,6 +63,7 @@ static CloudRenderer *g_cloudRenderer = nullptr;
 static ChunkRenderer *g_chunkRenderer = nullptr;
 static TextureAtlas *g_atlas = nullptr;
 static ConsoleMainMenu g_consoleMenu;
+static WorldLoadingScreen g_loadingScreen;
 static bool g_gameInitialized = false;
 
 // HUD UI state
@@ -118,7 +120,33 @@ static bool game_init() {
 
   // Generate a test world
   Random rng(12345LL);
-  g_level->generate(&rng);
+  
+  if (g_loadingScreen.init()) {
+    auto cb = [](float progress, const char* status, void* userdata) {
+      WorldLoadingScreen* ls = (WorldLoadingScreen*)userdata;
+
+      // Set up 2D ortho projection for the loading screen
+      sceGumMatrixMode(GU_PROJECTION);
+      sceGumLoadIdentity();
+      sceGumOrtho(0.0f, 480.0f, 272.0f, 0.0f, -1.0f, 1.0f);
+      sceGumMatrixMode(GU_VIEW);
+      sceGumLoadIdentity();
+      sceGumMatrixMode(GU_MODEL);
+      sceGumLoadIdentity();
+
+      ls->render(progress, status);
+      PSPRenderer_EndFrame();
+      PSPRenderer_BeginFrame(0xFF000000, 1.0f, 16.0f, 0xFF000000, 70.0f);
+    };
+
+    PSPRenderer_BeginFrame(0xFF000000, 1.0f, 16.0f, 0xFF000000, 70.0f);
+    g_level->generate(&rng, cb, &g_loadingScreen);
+    PSPRenderer_EndFrame();
+
+    g_loadingScreen.releaseResources();
+  } else {
+    g_level->generate(&rng);
+  }
 
   // Player start position
   g_player = new Player(g_level);

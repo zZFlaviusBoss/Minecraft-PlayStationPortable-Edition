@@ -14,7 +14,8 @@ public:
   Level();
   ~Level();
 
-  void generate(Random *rng);
+  typedef void (*ProgressCallback)(float progress, const char* status, void* userdata);
+  void generate(Random *rng, ProgressCallback callback = nullptr, void* userdata = nullptr);
   void computeLighting();
   
   void updateLight(int wx, int wy, int wz);

@@ -215,10 +215,6 @@ void ConsoleMainMenu::update(float dt) {
   if (m_mode == MenuStateMode::MainButtons) {
     if (PSPInput_JustPressed(PSP_CTRL_UP)) moveSelection(-1);
     if (PSPInput_JustPressed(PSP_CTRL_DOWN)) moveSelection(1);
-    if (PSPInput_JustPressed(PSP_CTRL_CIRCLE)) {
-      m_pendingAction = MainMenuAction::ExitGame;
-      return;
-    }
 
     if (PSPInput_JustPressed(PSP_CTRL_CROSS) ||
         PSPInput_JustPressed(PSP_CTRL_START)) {
@@ -536,8 +532,8 @@ void ConsoleMainMenu::renderWorldSelectUI() {
 
   // List items start below the label text
   int startY = recessY + 18;
-  int listX = leftRecessX + 4;
-  int itemWidth = recessW - 8;
+  int itemWidth = 180;
+  int listX = leftRecessX + (recessW - itemWidth) / 2;
   int itemHeight = 22;
 
   // Spinner helper lambda - draws the 8-square ring spinner in a given rect
@@ -568,7 +564,7 @@ void ConsoleMainMenu::renderWorldSelectUI() {
     }
   };
 
-  // LEFT panel: spinner while loading (< 0.8s), then world list
+  // LEFT panel: spinner while loading 
   {
     const float leftCX = leftRecessX + recessW * 0.5f;
     const float leftCY = recessY + recessH * 0.5f;

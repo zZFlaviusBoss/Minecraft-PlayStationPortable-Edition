@@ -1,0 +1,42 @@
+Alter the gamma settings to make the game brighter or darker.
+If you set the game difficulty to Peaceful, your health will automatically regenerate, and no monsters will come out at night!
+Feed a bone to a wolf to tame it. You can then make it sit or follow you.
+Sleeping in a bed at night will fast forward the game to dawn.
+Harvest pork chops from pigs, and cook and eat them to regain health.
+Harvest leather from cows, and use it to make armor.
+If you have an empty bucket, you can fill it with milk from a cow, or water, or lava!
+Use a hoe to prepare areas of ground for planting.
+Spiders won't attack you during the day - unless you attack them.
+Digging soil or sand with a spade is faster than with your hand!
+Eating cooked pork chops gives more health than eating raw pork chops.
+Make some torches to light up areas at night. Monsters will avoid the areas around these torches.
+Get to destinations faster with a minecart and rail!
+Plant some saplings and they'll grow into trees.
+Pigmen won't attack you, unless you attack them.
+You can change your game spawn point and skip to dawn by sleeping in a bed.
+Hit those fireballs back at the Ghast!
+Building a portal will allow you to travel to another dimension - The Nether.
+Use the right tool for the job!
+If you can't find any coal for your torches, you can always make charcoal from trees in a furnace.
+Digging straight down or straight up is not a great idea.
+Bonemeal can be used as a fertilizer, and can make things grow instantly!
+Creepers explode when they get close to you!
+Obsidian is created when water hits a lava source block.
+Cobblestone is resistant to Ghast fireballs, making it useful for guarding portals.
+Light sources will melt snow and ice. This includes torches, glowstone, and Jack-O-Lanterns.
+A single bucket of lava can be used in a furnace to smelt 100 blocks.
+The instrument played by a note block depends on the material beneath it.
+Zombies and Skeletons can survive daylight if they are in water.
+Wolves cannot enter the Nether.
+Wolves won't attack Creepers.
+Chickens lay an egg every 5 to 10 minutes.
+Obsidian can only be mined with a diamond pickaxe.
+Creepers are the easiest obtainable source of gunpowder.
+Placing two chests side by side will make one large chest.
+Tame wolves show their health with the position of their tail. Feed them meat to heal them.
+Cook cactus in a furnace to get green dye.
+Stackable fences are in the game now!
+Music by C418!
+Creepers were born from a coding bug.
+Is it a chicken or is it a duck?
+Did you know there's a Minecraft Wiki?

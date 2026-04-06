@@ -138,9 +138,11 @@ void Level::setBlockLight(int wx, int wy, int wz, uint8_t val) {
   m_chunks[cx][cz]->setLight(wx & 0xF, wy, wz & 0xF, curSky, val);
 }
 
-void Level::generate(Random *rng) {
+void Level::generate(Random *rng, ProgressCallback callback, void* userdata) {
   int64_t seed = rng->nextLong();
 
+  // Phase 1: Terrain generation (0-50%)
+  if (callback) callback(0.1f, "Generating terrain", userdata);
   for (int cx = 0; cx < WORLD_CHUNKS_X; cx++) {
     for (int cz = 0; cz < WORLD_CHUNKS_Z; cz++) {
       Chunk *c = m_chunks[cx][cz];
@@ -149,8 +151,11 @@ void Level::generate(Random *rng) {
       WorldGen::generateChunk(c->blocks, cx, cz, seed);
       for(int i=0; i<4; i++) c->dirty[i] = true;
     }
+    if (callback) callback(0.1f + 0.4f * ((float)(cx+1) / WORLD_CHUNKS_X), "Generating terrain", userdata);
   }
 
+  // Phase 2: Tree placement (50-70%)
+  if (callback) callback(0.51f, "Placing trees", userdata);
   for (int cx = 0; cx < WORLD_CHUNKS_X; cx++) {
     for (int cz = 0; cz < WORLD_CHUNKS_Z; cz++) {
       Random chunkRng(seed ^ ((int64_t)cx * 341873128712LL) ^ ((int64_t)cz * 132897987541LL));
@@ -169,9 +174,13 @@ void Level::generate(Random *rng) {
         }
       }
     }
+    if (callback) callback(0.51f + 0.19f * ((float)(cx+1) / WORLD_CHUNKS_X), "Placing trees", userdata);
   }
 
+  // Phase 3: Lighting (70-100%)
+  if (callback) callback(0.71f, "Computing lighting", userdata);
   computeLighting();
+  if (callback) callback(1.0f, "Simulating world", userdata);
 }
 
 void Level::computeLighting() {
