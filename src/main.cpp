@@ -122,6 +122,7 @@ static bool game_init() {
   Random rng(12345LL);
   
   if (g_loadingScreen.init()) {
+    g_loadingScreen.setScrollOffset(g_consoleMenu.getScrollOffset());
     auto cb = [](float progress, const char* status, void* userdata) {
       WorldLoadingScreen* ls = (WorldLoadingScreen*)userdata;
 
@@ -170,34 +171,8 @@ static void game_update(float dt) {
     static int textureIdx = 0;
     textureIdx = (textureIdx + 1) % 4;
 
-    uint8_t tx = 13, ty = 12;
-    switch (textureIdx) {
-      case 0: tx = 13; ty = 12; break; 
-      case 1: tx = 14; ty = 12; break;
-      case 2: tx = 15; ty = 12; break;
-      case 3: tx = 14; ty = 13; break;
-    }
-
-    g_blockUV[BLOCK_WATER_STILL] = {tx, ty, tx, ty, tx, ty};
-    g_blockUV[BLOCK_WATER_FLOW] = {tx, ty, tx, ty, tx, ty};
-
-    // ONLY update chunks within a 4-block radius of the player
-    int minCX = (int)(g_player->getX() - 4.0f) >> 4;
-    int maxCX = (int)(g_player->getX() + 4.0f) >> 4;
-    int minCZ = (int)(g_player->getZ() - 4.0f) >> 4;
-    int maxCZ = (int)(g_player->getZ() + 4.0f) >> 4;
-
-    for (int cx = minCX; cx <= maxCX; cx++) {
-      for (int cz = minCZ; cz <= maxCZ; cz++) {
-        if (cx >= 0 && cx < WORLD_CHUNKS_X && cz >= 0 && cz < WORLD_CHUNKS_Z) {
-          Chunk* c = g_level->getChunk(cx, cz);
-          if (c) {
-            for (int sy = 0; sy < 4; sy++) {
-              c->dirty[sy] = true;
-            }
-          }
-        }
-      }
+    if (g_atlas) {
+      g_atlas->animateWater(textureIdx);
     }
   }
 
@@ -254,7 +229,7 @@ static void drawHUD() {
     char yBuf[32];
     int playerY = (int)floorf(g_player->getY());
     snprintf(yBuf, sizeof(yBuf), "Y: %d", playerY);
-    g_font.drawShadow(4.0f, 4.0f, yBuf, 0xFFFFFF00, 1.0f);  // yellow
+    g_font.drawString(4.0f, 4.0f, yBuf, 0xFFFFFF00, 1.0f);  // yellow
   }
 
   // 1. [R] Mine (if looking at a block)
@@ -262,7 +237,7 @@ static void drawHUD() {
     g_texBtnR.bind();
     drawQuad2D(xOffset, yBase, icoW, icoW, 0, 0, g_texBtnR.origWidth, g_texBtnR.origHeight);
     xOffset += icoW + 4.0f;
-    g_font.drawShadow(xOffset, yBase + 4.0f, "Mine", 0xFFFFFFFF, 1.0f);
+    g_font.drawString(xOffset, yBase + 4.0f, "Mine", 0xFFFFFFFF, 1.0f);
     xOffset += g_font.getStringWidth("Mine", 1.0f) + 16.0f;
   }
 
@@ -270,12 +245,12 @@ static void drawHUD() {
   g_texBtnL.bind();
   drawQuad2D(xOffset, yBase, icoW, icoW, 0, 0, g_texBtnL.origWidth, g_texBtnL.origHeight);
   xOffset += icoW + 2.0f; 
-  g_font.drawShadow(xOffset, yBase + 4.0f, "+", 0xFFFFFFFF, 1.0f);
+  g_font.drawString(xOffset, yBase + 4.0f, "+", 0xFFFFFFFF, 1.0f);
   xOffset += g_font.getStringWidth("+", 1.0f) + 2.0f;
   g_texBtnR.bind();
   drawQuad2D(xOffset, yBase, icoW, icoW, 0, 0, g_texBtnR.origWidth, g_texBtnR.origHeight);
   xOffset += icoW + 4.0f;
-  g_font.drawShadow(xOffset, yBase + 4.0f, "Creative", 0xFFFFFFFF, 1.0f);
+  g_font.drawString(xOffset, yBase + 4.0f, "Creative", 0xFFFFFFFF, 1.0f);
   xOffset += g_font.getStringWidth("Creative", 1.0f) + 16.0f;
 
   // 3. [L] Place [BlockIcon] (if holding block and hit result hit)
@@ -283,7 +258,7 @@ static void drawHUD() {
     g_texBtnL.bind();
     drawQuad2D(xOffset, yBase, icoW, icoW, 0, 0, g_texBtnL.origWidth, g_texBtnL.origHeight);
     xOffset += icoW + 4.0f;
-    g_font.drawShadow(xOffset, yBase + 4.0f, "Place", 0xFFFFFFFF, 1.0f);
+    g_font.drawString(xOffset, yBase + 4.0f, "Place", 0xFFFFFFFF, 1.0f);
     xOffset += g_font.getStringWidth("Place", 1.0f) + 8.0f;
 
     // Draw the held block icon from the terrain atlas

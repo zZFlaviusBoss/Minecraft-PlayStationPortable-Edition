@@ -22,7 +22,7 @@ enum class WorldSelectTab {
 
 class ConsoleMainMenu {
 public:
-  static constexpr int kMenuItemCount = 6;
+  static constexpr int kMenuItemCount = 4;
   static constexpr int kWorldItemCount = 2;
 
   ConsoleMainMenu();
@@ -34,6 +34,8 @@ public:
   void releaseResources();
 
   MainMenuAction consumeAction();
+
+  float getScrollOffset() const { return m_scrollOffset; }
 
 private:
   struct MenuItem {

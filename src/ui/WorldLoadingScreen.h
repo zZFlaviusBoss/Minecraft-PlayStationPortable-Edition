@@ -13,12 +13,11 @@ public:
   void update(float dt);
   void render(float progress, const char* status);
   void setTip(const char* tip);
+  void setScrollOffset(float offset);
   void releaseResources();
 
 private:
-  // Panorama (same as ConsoleMainMenu)
-  Texture m_texPanoL;
-  Texture m_texPanoR;
+  Texture m_texPano;
   Texture m_texLogo;
   float m_scrollOffset;
 

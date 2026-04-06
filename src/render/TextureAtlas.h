@@ -15,6 +15,9 @@ public:
 
   bool load(const char *path);
   void bind();
+  
+  uint32_t waterFrames[4][256];
+  void animateWater(int frameIdx);
 
   // Epsilon to push UVs slightly inward to prevent nearest-neighbor floating point rounding errors
   // at block borders. 0.00195f represents half a texel on the 256x256 base level.

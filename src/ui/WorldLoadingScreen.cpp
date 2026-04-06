@@ -61,8 +61,7 @@ bool WorldLoadingScreen::init() {
   if (m_resourcesLoaded) return true;
 
   // Panorama + Logo (same assets as ConsoleMainMenu)
-  m_texPanoL.load("res/title/background/panorama_0.png");
-  m_texPanoR.load("res/title/background/panorama_1.png");
+  m_texPano.load("res/title/background/panorama.png");
   m_texLogo.load("res/title/mclogo.png");
 
   // Tip panel - pointertextpanel.png is 24x24
@@ -77,8 +76,7 @@ bool WorldLoadingScreen::init() {
   loadTips();
   pickRandomTip();
 
-  m_resourcesLoaded = m_texPanoL.vramPtr && m_texPanoR.vramPtr &&
-                      m_texLogo.vramPtr && m_font.texture.vramPtr;
+  m_resourcesLoaded = m_texPano.vramPtr && m_texLogo.vramPtr && m_font.texture.vramPtr;
   return m_resourcesLoaded;
 }
 
@@ -137,8 +135,7 @@ void WorldLoadingScreen::pickRandomTip() {
 }
 
 void WorldLoadingScreen::releaseResources() {
-  m_texPanoL.free();
-  m_texPanoR.free();
+  m_texPano.free();
   m_texLogo.free();
   m_texTipPanel.free();
   m_font.free();
@@ -192,46 +189,25 @@ void WorldLoadingScreen::render(float progress, const char* status) {
   sceGuTexFilter(GU_NEAREST, GU_NEAREST);
 
   // ---- 1. Scrolling Panorama Background ----
-  if (m_texPanoL.vramPtr && m_texPanoR.vramPtr) {
+  if (m_texPano.vramPtr) {
     sceGuDisable(GU_BLEND);
 
-    float pLw = (float)m_texPanoL.origWidth;
-    float pRw = (float)m_texPanoR.origWidth;
-    float ph = (float)m_texPanoL.origHeight;
-    float totalW = pLw + pRw;
-
+    float pw = (float)m_texPano.origWidth;
+    float ph = (float)m_texPano.origHeight;
     float scale = 272.0f / ph;
-    float scaledTotalW = totalW * scale;
+    float scaledW = pw * scale;
 
-    float scrollPx = fmodf(m_scrollOffset * 30.0f, scaledTotalW);
+    float scrollPx = fmodf(m_scrollOffset * 30.0f, scaledW);
 
-    float clampU0_L = 0.0f, clampU1_L = pLw - 0.5f;
-    float clampU0_R = 0.0f, clampU1_R = pRw - 0.5f;
-    float clampV0 = 0.0f, clampV1 = ph - 0.5f;
+    float uvPerPixel = pw / scaledW;
 
-    for (int pass = 0; pass < 2; pass++) {
-      float baseX = -scrollPx + pass * scaledTotalW;
+    float uvStart = (scrollPx / scaledW) * pw;
+    float uvEnd   = uvStart + 480.0f * uvPerPixel;
 
-      float lx = baseX;
-      float lw = pLw * scale;
-      if (lx + lw > 0 && lx < 480) {
-        m_texPanoL.bind();
-        sceGuTexFilter(GU_LINEAR, GU_LINEAR);
-        sceGuTexWrap(GU_CLAMP, GU_CLAMP);
-        drawQuad2D(lx, 0, lw, 272, clampU0_L, clampV0, clampU1_L,
-                   clampV1, 0xFFFFFFFF);
-      }
-
-      float rx = baseX + pLw * scale;
-      float rw = pRw * scale;
-      if (rx + rw > 0 && rx < 480) {
-        m_texPanoR.bind();
-        sceGuTexFilter(GU_LINEAR, GU_LINEAR);
-        sceGuTexWrap(GU_CLAMP, GU_CLAMP);
-        drawQuad2D(rx, 0, rw, 272, clampU0_R, clampV0, clampU1_R, clampV1,
-                   0xFFFFFFFF);
-      }
-    }
+    m_texPano.bind();
+    sceGuTexFilter(GU_LINEAR, GU_LINEAR);
+    sceGuTexWrap(GU_REPEAT, GU_CLAMP);
+    drawQuad2D(0, 0, 480, 272, uvStart, 0, uvEnd, ph, 0xFFFFFFFF);
 
     sceGuTexFilter(GU_NEAREST, GU_NEAREST);
     sceGuEnable(GU_BLEND);
@@ -240,13 +216,15 @@ void WorldLoadingScreen::render(float progress, const char* status) {
   // ---- 2. Minecraft Logo ----
   if (m_texLogo.vramPtr) {
     m_texLogo.bind();
+    sceGuTexFilter(GU_LINEAR, GU_LINEAR);
     float lw = (float)m_texLogo.origWidth;
     float lh = (float)m_texLogo.origHeight;
-    float logoW = 248.0f;
+    float logoW = 274.0f;
     float logoH = logoW * (lh / lw);
     float logoX = (480.0f - logoW) / 2.0f;
-    float logoY = 27.0f;
+    float logoY = 16.0f;
     drawQuad2D(logoX, logoY, logoW, logoH, 0, 0, lw, lh);
+    sceGuTexFilter(GU_NEAREST, GU_NEAREST);
   }
 
   // ---- Layout constants ----
@@ -260,7 +238,7 @@ void WorldLoadingScreen::render(float progress, const char* status) {
 
   // ---- 4. Status text: left-aligned at bar X, just above the bar ----
   if (status && status[0]) {
-    m_font.drawShadow(barX + 2.0f, barY - 10.0f, status, 0xFFFFFFFF, 1.0f);
+    m_font.drawString(barX + 2.0f, barY - 10.0f, status, 0xFFFFFFFF, 1.0f);
   }
 
   // ---- 5. Progress Bar: gray bg + green fill inset inside ----
@@ -347,7 +325,7 @@ void WorldLoadingScreen::render(float progress, const char* status) {
     float centerX = tipPanelX + tipPanelW / 2.0f;
 
     for (int i = 0; i < lineCount; i++) {
-      m_font.drawShadowCentered(centerX, startY + i * lineH, lines[i], 0xFFFFFFFF, tipScale);
+      m_font.drawStringCentered(centerX, startY + i * lineH, lines[i], 0xFFFFFFFF, tipScale);
     }
   }
 
@@ -359,4 +337,8 @@ void WorldLoadingScreen::setTip(const char* tip) {
     strncpy(m_currentTip, tip, sizeof(m_currentTip) - 1);
     m_currentTip[sizeof(m_currentTip) - 1] = '\0';
   }
+}
+
+void WorldLoadingScreen::setScrollOffset(float offset) {
+  m_scrollOffset = offset;
 }

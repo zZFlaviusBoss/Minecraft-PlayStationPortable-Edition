@@ -174,6 +174,20 @@ bool TextureAtlas::load(const char *path) {
     if (pixels && imgW == 256 && imgH == 256) {
       apply_tints(pixels, 256, 256);
       memcpy(vram, pixels, 256 * 256 * 4);
+
+      // Extract water frames
+      uint32_t* srcTex = (uint32_t*)pixels;
+      int frameCoords[4][2] = {{13, 12}, {14, 12}, {15, 12}, {14, 13}};
+      for (int i=0; i<4; i++) {
+        int sx = frameCoords[i][0];
+        int sy = frameCoords[i][1];
+        for (int py=0; py<16; py++) {
+          for (int px=0; px<16; px++) {
+            waterFrames[i][py*16 + px] = srcTex[(sy*16+py)*256 + (sx*16+px)];
+          }
+        }
+      }
+
       stbi_image_free(pixels);
 
       vramPtr = (void *)vram;
@@ -190,6 +204,18 @@ bool TextureAtlas::load(const char *path) {
 
   // Fallback: procedural palette with Minecraft colors
   generate_fallback_texture(vram);
+
+  int frameCoords[4][2] = {{13, 12}, {14, 12}, {15, 12}, {14, 13}};
+  for (int i=0; i<4; i++) {
+    int sx = frameCoords[i][0];
+    int sy = frameCoords[i][1];
+    for (int py=0; py<16; py++) {
+      for (int px=0; px<16; px++) {
+        waterFrames[i][py*16 + px] = vram[(sy*16+py)*256 + (sx*16+px)];
+      }
+    }
+  }
+
   width = 256;
   height = 256;
   vramPtr = (void *)vram;
@@ -205,3 +231,16 @@ void TextureAtlas::bind() {
   sceGuTexOffset(0.0f, 0.0f);
   sceGuTexFilter(GU_NEAREST, GU_NEAREST);
 }
+
+void TextureAtlas::animateWater(int frameIdx) {
+  if (!vramPtr) return;
+  uint32_t* vram = (uint32_t*)vramPtr;
+  for (int py=0; py<16; py++) {
+      for (int px=0; px<16; px++) {
+          uint32_t color = waterFrames[frameIdx % 4][py*16 + px];
+          vram[(12*16+py)*256 + (13*16+px)] = color; // 13, 12 (still)
+          vram[(13*16+py)*256 + (13*16+px)] = color; // 13, 13 (flow)
+      }
+  }
+}
+

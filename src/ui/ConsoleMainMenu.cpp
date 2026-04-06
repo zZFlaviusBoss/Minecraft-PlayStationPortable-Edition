@@ -73,10 +73,8 @@ ConsoleMainMenu::ConsoleMainMenu()
   m_splashStorage[0] = '\0';
   m_items[0] = {"Play Game", true};
   m_items[1] = {"Leaderboards", false};
-  m_items[2] = {"Trophies", false};
-  m_items[3] = {"Help & Options", false};
-  m_items[4] = {"Minecraft Store", false};
-  m_items[5] = {"Exit Game", false};
+  m_items[2] = {"Help & Options", false};
+  m_items[3] = {"Minecraft Store", false};
 }
 
 ConsoleMainMenu::~ConsoleMainMenu() {}
@@ -221,8 +219,7 @@ void ConsoleMainMenu::update(float dt) {
         m_worldSelectTab = WorldSelectTab::StartGame;
         m_saveSelectedIndex = 0;
         m_joinLoadingTimer = 0.0f;  // reset load timers
-      } else if (m_selectedIndex == 5) {
-        m_pendingAction = MainMenuAction::ExitGame;
+        loadSplash();
       }
     }
   } else if (m_mode == MenuStateMode::WorldSelect) {
@@ -244,6 +241,7 @@ void ConsoleMainMenu::update(float dt) {
     }
     if (PSPInput_JustPressed(PSP_CTRL_CIRCLE)) {
       m_mode = MenuStateMode::MainButtons;
+      loadSplash();
     }
     if (PSPInput_JustPressed(PSP_CTRL_CROSS) || PSPInput_JustPressed(PSP_CTRL_START)) {
       if (m_worldSelectTab == WorldSelectTab::StartGame) {
@@ -295,137 +293,145 @@ void ConsoleMainMenu::render(int screenWidth, int screenHeight) {
 
   if (m_texLogo.vramPtr) {
     m_texLogo.bind();
+    sceGuTexFilter(GU_LINEAR, GU_LINEAR);
     float lw = (float)m_texLogo.origWidth;
     float lh = (float)m_texLogo.origHeight;
-    float logoW = 248.0f;
+    float logoW = 274.0f;
     float logoH = logoW * (lh / lw);
     float logoX = (480.0f - logoW) / 2.0f;
-    float logoY = 27.0f;
+    float logoY = 16.0f;
     drawQuad2D(logoX, logoY, logoW, logoH, 0, 0, lw, lh);
+    sceGuTexFilter(GU_NEAREST, GU_NEAREST);
   }
 
-  if (m_mode == MenuStateMode::MainButtons) {
+  // Store splash variables to render them at the end (rendering order)
+  bool shouldRenderSplash = (m_mode == MenuStateMode::MainButtons);
+  float splashS = 0.0f;
+  float spStartX = 0.0f, spStartY = 0.0f;
+  float cx = 480.0f * 0.5f + 100.0f;
+  float cy = 59.0f;
+  float cosA = 0.0f, sinA = 0.0f;
+
+  if (shouldRenderSplash) {
     uint64_t timeUs = sceKernelGetSystemTimeWide();
     float timeS = (timeUs % 1000000) / 1000000.0f;
-    float splashS = 1.8f - fabsf(sinf(timeS * 3.14159265f * 2.0f)) * 0.1f;
+    splashS = 1.8f - fabsf(sinf(timeS * 3.14159265f * 2.0f)) * 0.1f;
     float txtW = m_font.getStringWidth(m_currentSplash, 1.0f);
     splashS = splashS * 100.0f / (txtW + 32.0f);
 
-    float cx = 480.0f * 0.5f + 90.0f;
-    float cy = 70.0f;
     float angle = -20.0f * (3.14159265358979323846f / 180.0f);
-    float cosA = cosf(angle);
-    float sinA = sinf(angle);
+    cosA = cosf(angle);
+    sinA = sinf(angle);
 
-    float startX = (-txtW / 2.0f) * splashS;
-    float startY = -4.0f * splashS;
-
-    uint32_t col = 0xFF00FFFF;
-    uint32_t shadowCol = 0xFF003F3F;
-
-    for (int pass = 0; pass < 2; pass++) {
-      uint32_t c = (pass == 0) ? shadowCol : col;
-      float ox = (pass == 0) ? 1.0f * splashS : 0.0f;
-      float oy = (pass == 0) ? 1.0f * splashS : 0.0f;
-
-      if (m_font.texture.vramPtr) {
-        m_font.texture.bind();
-
-        int numChars = 0;
-        for (const char* p = m_currentSplash; *p; ++p) {
-          if (*p != ' ') numChars++;
-        }
-
-        if (numChars > 0) {
-          VertTCO* v = (VertTCO*)sceGuGetMemory(6 * numChars * sizeof(VertTCO));
-          int vIdx = 0;
-
-          float cellW = (float)(m_font.texture.origWidth / 16);
-          float cellH = (float)(m_font.texture.origHeight / 16);
-
-          float currentX = startX + ox;
-          float y = startY + oy;
-
-          for (const char* p = m_currentSplash; *p; ++p) {
-            unsigned char ch = (unsigned char)*p;
-            if (ch == ' ') {
-              currentX += m_font.charWidth[ch] * splashS;
-              continue;
-            }
-
-            int row = ch / 16;
-            int colPos = ch % 16;
-            float u0 = colPos * cellW;
-            float v0 = row * cellH;
-            float u1 = u0 + cellW;
-            float v1 = v0 + cellH;
-
-            float lx0 = currentX;
-            float ly0 = y;
-            float lx1 = currentX + cellW * splashS;
-            float ly1 = y + cellH * splashS;
-
-            auto transform = [&](float lx, float ly, float& sx, float& sy) {
-              sx = cx + (lx * cosA - ly * sinA);
-              sy = cy + (lx * sinA + ly * cosA);
-            };
-
-            float p0x, p0y, p1x, p1y, p2x, p2y, p3x, p3y;
-            transform(lx0, ly0, p0x, p0y);
-            transform(lx0, ly1, p1x, p1y);
-            transform(lx1, ly0, p2x, p2y);
-            transform(lx1, ly1, p3x, p3y);
-
-            v[vIdx++] = {u0, v0, c, p0x, p0y, 0};
-            v[vIdx++] = {u0, v1, c, p1x, p1y, 0};
-            v[vIdx++] = {u1, v0, c, p2x, p2y, 0};
-            v[vIdx++] = {u1, v0, c, p2x, p2y, 0};
-            v[vIdx++] = {u0, v1, c, p1x, p1y, 0};
-            v[vIdx++] = {u1, v1, c, p3x, p3y, 0};
-
-            currentX += m_font.charWidth[ch] * splashS;
-          }
-
-          sceGuDrawArray(GU_TRIANGLES,
-                         GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF |
-                             GU_TRANSFORM_2D,
-                         6 * numChars, 0, v);
-        }
-      }
-    }
+    spStartX = (-txtW / 2.0f) * splashS;
+    spStartY = -4.0f * splashS;
   }
 
   if (m_mode == MenuStateMode::MainButtons) {
+    const float BTN_W = 196.0f;
+    const float BTN_H = 26.0f;
+    const float BTN_GAP = 6.0f;
+    const float startX = (480.0f - BTN_W) * 0.5f;
+    const float startY = 94.0f;
+
     if (m_texGui.vramPtr) {
       m_texGui.bind();
-      const float BTN_W = 200.0f;
-      const float BTN_H = 20.0f;
-      const float BTN_GAP = 4.0f;
-      const float startX = (480.0f - BTN_W) * 0.5f;
-      const float startY = 100.0f;
-
       for (int i = 0; i < kMenuItemCount; ++i) {
         float bx = startX;
         float by = startY + i * (BTN_H + BTN_GAP);
         float srcY = m_items[i].selected ? 86.0f : 66.0f;
 
-        drawQuad2D(bx, by, BTN_W / 2, BTN_H, 0.0f, srcY, BTN_W / 2, srcY + BTN_H);
-        drawQuad2D(bx + BTN_W / 2, by, BTN_W / 2, BTN_H, 200.0f - BTN_W / 2, srcY,
-                   200.0f, srcY + BTN_H);
+        drawQuad2D(bx, by, BTN_W / 2, BTN_H, 0.0f, srcY, 100.0f, srcY + 20.0f);
+        drawQuad2D(bx + BTN_W / 2, by, BTN_W / 2, BTN_H, 100.0f, srcY,
+                   200.0f, srcY + 20.0f);
       }
     }
 
     {
-      const float BTN_H = 20.0f;
-      const float BTN_GAP = 4.0f;
-      const float startY = 100.0f;
-
       for (int i = 0; i < kMenuItemCount; ++i) {
         float by = startY + i * (BTN_H + BTN_GAP);
-        float textY = by + (BTN_H - 8.0f) / 2.0f;
+        float textScale = 2.0f;
+        float textY = floorf(by + (BTN_H - 8.0f * textScale) / 2.0f);
         uint32_t col = m_items[i].selected ? 0xFF00FFFF : 0xFFE0E0E0;
         
-        m_font.drawShadowCentered(480.0f * 0.5f, textY, m_items[i].text, col, 1.0f);
+        m_font.drawStringCentered(480.0f * 0.5f, textY, m_items[i].text, col, textScale);
+      }
+    }
+
+    // Now render splash OVER buttons
+    if (shouldRenderSplash) {
+      uint32_t col = 0xFF00FFFF; // Neon yellow in ABGR
+      uint32_t shadowCol = 0xFF003F3F;
+
+      for (int pass = 0; pass < 2; pass++) {
+        uint32_t c = (pass == 0) ? shadowCol : col;
+        float ox = (pass == 0) ? 1.0f * splashS : 0.0f;
+        float oy = (pass == 0) ? 1.0f * splashS : 0.0f;
+
+        if (m_font.texture.vramPtr) {
+          m_font.texture.bind();
+
+          int numChars = 0;
+          for (const char* p = m_currentSplash; *p; ++p) {
+            if (*p != ' ') numChars++;
+          }
+
+          if (numChars > 0) {
+            VertTCO* v = (VertTCO*)sceGuGetMemory(6 * numChars * sizeof(VertTCO));
+            int vIdx = 0;
+
+            float cellW = (float)(m_font.texture.origWidth / 16);
+            float cellH = (float)(m_font.texture.origHeight / 16);
+
+            float currentX = spStartX + ox;
+            float y = spStartY + oy;
+
+            for (const char* p = m_currentSplash; *p; ++p) {
+              unsigned char ch = (unsigned char)*p;
+              if (ch == ' ') {
+                currentX += m_font.charWidth[ch] * splashS;
+                continue;
+              }
+
+              int row = ch / 16;
+              int colPos = ch % 16;
+              float u0 = colPos * cellW;
+              float v0 = row * cellH;
+              float u1 = u0 + cellW;
+              float v1 = v0 + cellH;
+
+              float lx0 = currentX;
+              float ly0 = y;
+              float lx1 = currentX + cellW * splashS;
+              float ly1 = y + cellH * splashS;
+
+              auto transform = [&](float lx, float ly, float& sx, float& sy) {
+                sx = cx + (lx * cosA - ly * sinA);
+                sy = cy + (lx * sinA + ly * cosA);
+              };
+
+              float p0x, p0y, p1x, p1y, p2x, p2y, p3x, p3y;
+              transform(lx0, ly0, p0x, p0y);
+              transform(lx0, ly1, p1x, p1y);
+              transform(lx1, ly0, p2x, p2y);
+              transform(lx1, ly1, p3x, p3y);
+
+              v[vIdx++] = {u0, v0, c, p0x, p0y, 0};
+              v[vIdx++] = {u0, v1, c, p1x, p1y, 0};
+              v[vIdx++] = {u1, v0, c, p2x, p2y, 0};
+              v[vIdx++] = {u1, v0, c, p2x, p2y, 0};
+              v[vIdx++] = {u0, v1, c, p1x, p1y, 0};
+              v[vIdx++] = {u1, v1, c, p3x, p3y, 0};
+
+              currentX += m_font.charWidth[ch] * splashS;
+            }
+
+            sceGuDrawArray(GU_TRIANGLES,
+                           GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF |
+                               GU_TRANSFORM_2D,
+                           6 * numChars, 0, v);
+          }
+        }
       }
     }
   } else if (m_mode == MenuStateMode::WorldSelect) {
@@ -438,7 +444,7 @@ void ConsoleMainMenu::render(int screenWidth, int screenHeight) {
       m_texBtnCross.bind();
       drawQuad2D(xOff, 272.0f - 24.0f, 16.0f, 16.0f, 0, 0, m_texBtnCross.origWidth, m_texBtnCross.origHeight);
       xOff += 20.0f;
-      m_font.drawShadow(xOff, 272.0f - 20.0f, "Select", 0xFFFFFFFF, 1.0f);
+      m_font.drawString(xOff, 272.0f - 20.0f, "Select", 0xFFFFFFFF, 1.0f);
       xOff += m_font.getStringWidth("Select", 1.0f) + 16.0f;
     }
     
@@ -447,7 +453,7 @@ void ConsoleMainMenu::render(int screenWidth, int screenHeight) {
       m_texBtnCircle.bind();
       drawQuad2D(xOff, 272.0f - 24.0f, 16.0f, 16.0f, 0, 0, m_texBtnCircle.origWidth, m_texBtnCircle.origHeight);
       xOff += 20.0f;
-      m_font.drawShadow(xOff, 272.0f - 20.0f, "Back", 0xFFFFFFFF, 1.0f);
+      m_font.drawString(xOff, 272.0f - 20.0f, "Back", 0xFFFFFFFF, 1.0f);
     }
   }
 
@@ -465,7 +471,7 @@ MainMenuAction ConsoleMainMenu::consumeAction() {
 
 void ConsoleMainMenu::renderWorldSelectUI() {
   // Main panel - pushed down so the Minecraft logo is visible above
-  int px = 18, py = 78, pw = 444, ph = 168;
+  int px = 42, py = 78, pw = 396, ph = 168;
 
   m_mainPanel.setSize(pw, ph);
   m_mainPanel.render(px, py);
@@ -482,8 +488,8 @@ void ConsoleMainMenu::renderWorldSelectUI() {
   auto lerpByte = [](float a, float b, float t) -> uint8_t {
     return (uint8_t)(a + (b - a) * t);
   };
-  uint8_t leftCh  = lerpByte(0xAA, 0xFF, m_tabTransition);   // 0xAA when Start focused, 0xFF when Join focused
-  uint8_t rightCh = lerpByte(0xFF, 0xAA, m_tabTransition);   // 0xFF when Start focused, 0xAA when Join focused
+  uint8_t leftCh  = lerpByte(0xCC, 0xFF, m_tabTransition);   // 0xCC when Start focused, 0xFF when Join focused
+  uint8_t rightCh = lerpByte(0xFF, 0xCC, m_tabTransition);   // 0xFF when Start focused, 0xCC when Join focused
   m_leftRecess.setColor(0xFF000000 | ((uint32_t)leftCh << 16) | ((uint32_t)leftCh << 8) | leftCh);
   m_rightSquare.setColor(0xFF000000 | ((uint32_t)rightCh << 16) | ((uint32_t)rightCh << 8) | rightCh);
 
@@ -495,8 +501,8 @@ void ConsoleMainMenu::renderWorldSelectUI() {
 
 
   // Labels INSIDE the recess panels, at the top
-  const uint32_t selectedTitleColor = 0xFF2C2C2C;
-  const uint32_t unselectedTitleColor = 0xFF585858;
+  const uint32_t selectedTitleColor = 0xFF202020;
+  const uint32_t unselectedTitleColor = 0xFF484848;
   const uint32_t startTitleColor = (m_worldSelectTab == WorldSelectTab::StartGame)
                                        ? selectedTitleColor
                                        : unselectedTitleColor;
@@ -504,12 +510,12 @@ void ConsoleMainMenu::renderWorldSelectUI() {
                                       ? selectedTitleColor
                                       : unselectedTitleColor;
 
-  m_font.drawStringCentered(leftRecessX + recessW / 2.0f, recessY + 6, "Start Game", startTitleColor, 1.0f);
-  m_font.drawStringCentered(rightRecessX + recessW / 2.0f, recessY + 6, "Join Game", joinTitleColor, 1.0f);
+  m_font.drawStringCentered(leftRecessX + recessW / 2.0f, recessY + 10, "Start Game", startTitleColor, 1.0f);
+  m_font.drawStringCentered(rightRecessX + recessW / 2.0f, recessY + 10, "Join Game", joinTitleColor, 1.0f);
 
   // List items start below the label text
-  int startY = recessY + 18;
-  int itemWidth = 180;
+  int startY = recessY + 30;
+  int itemWidth = 170;
   int listX = leftRecessX + (recessW - itemWidth) / 2;
   int itemHeight = 22;
 
@@ -552,12 +558,15 @@ void ConsoleMainMenu::renderWorldSelectUI() {
       for (int i = 0; i < kWorldItemCount; ++i) {
         int y = startY + i * itemHeight;
         bool isSelected = (m_worldSelectTab == WorldSelectTab::StartGame) && (i == m_saveSelectedIndex);
+        if (isSelected) {
+          drawRect2D(listX + 2, y + 2, itemWidth - 4, itemHeight - 4, 0xFFDC9650);
+        }
         Texture& bgTex = isSelected ? m_texListOver : m_texListNorm;
         drawTex2D(bgTex, listX, y, itemWidth, itemHeight);
+        
         uint32_t txtColor = isSelected ? 0xFF00FFFF : 0xFFFFFFFF;
-        // Text shifted right to leave ~28px for a future icon on the left
         float textY = y + (itemHeight - 8.0f) * 0.5f;
-        m_font.drawShadow(listX + 28.0f, textY, worlds[i], txtColor, 1.0f);
+        m_font.drawString(listX + 28.0f, textY, worlds[i], txtColor, 1.0f);
       }
     }
   }
@@ -569,7 +578,7 @@ void ConsoleMainMenu::renderWorldSelectUI() {
     if (m_joinLoadingTimer < 2.0f) {
       drawSpinner(rightCX, rightCY);
     } else {
-      m_font.drawShadowCentered(rightCX, rightCY - 4.0f, "No Games Found", 0xFF404040, 1.0f);
+      m_font.drawStringCentered(floorf(rightCX), floorf(rightCY - 4.0f), "No Games Found", 0xFF484848, 1.0f);
     }
   }
 }
