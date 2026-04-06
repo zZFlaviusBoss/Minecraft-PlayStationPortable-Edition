@@ -54,8 +54,7 @@ private:
 
   Texture m_texGui;
   Texture m_texLogo;
-  Texture m_texPanoL;
-  Texture m_texPanoR;
+  Texture m_texPano;
   Texture m_texBtnCross;
   Texture m_texBtnCircle;
 
