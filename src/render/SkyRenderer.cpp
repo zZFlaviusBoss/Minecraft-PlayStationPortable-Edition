@@ -73,7 +73,7 @@ void SimpleTexture::bind() {
 SkyRenderer::SkyRenderer(Level *level) : m_level(level) {
   m_celestialVertices = (SkyVertex *)memalign(16, 32 * sizeof(SkyVertex));
 
-  int s = 16;
+  int s = 8;
   int d = 32;
   m_numSkyVertices = (d * 2) * (d * 2) * 6;
   m_skyVertices =
@@ -92,12 +92,12 @@ SkyRenderer::SkyRenderer(Level *level) : m_level(level) {
   float yy = 16.0f;
   for (int xx = -s * d; xx < s * d; xx += s) {
     for (int zz = -s * d; zz < s * d; zz += s) {
+      m_skyVertices[skyIdx++] = {(float)(xx + s), yy, (float)(zz + 0)};
       m_skyVertices[skyIdx++] = {(float)(xx + 0), yy, (float)(zz + 0)};
-      m_skyVertices[skyIdx++] = {(float)(xx + s), yy, (float)(zz + 0)};
-      m_skyVertices[skyIdx++] = {(float)(xx + 0), yy, (float)(zz + s)};
-      m_skyVertices[skyIdx++] = {(float)(xx + s), yy, (float)(zz + 0)};
       m_skyVertices[skyIdx++] = {(float)(xx + s), yy, (float)(zz + s)};
+      m_skyVertices[skyIdx++] = {(float)(xx + 0), yy, (float)(zz + 0)};
       m_skyVertices[skyIdx++] = {(float)(xx + 0), yy, (float)(zz + s)};
+      m_skyVertices[skyIdx++] = {(float)(xx + s), yy, (float)(zz + s)};
     }
   }
   sceKernelDcacheWritebackInvalidateRange(
@@ -308,11 +308,11 @@ void SkyRenderer::renderSky(float playerX, float playerY, float playerZ, const S
   // At 5 deg elevation: 16/sin(5deg)=184u, so fog end >184 ensures full coverage.
   sceGuFog(0.0f, 200.0f, horizonCol);
 
-  // Use wider near clip for sky to avoid hardware cutouts
+  // Use a very tight near clip for sky to avoid dropping triangles near W=0 (overhead)
   sceGumMatrixMode(GU_PROJECTION);
   sceGumPushMatrix();
   sceGumLoadIdentity();
-  sceGumPerspective(70.0f, 480.0f / 272.0f, 4.0f, 2000.0f);
+  sceGumPerspective(70.0f, 480.0f / 272.0f, 0.05f, 2000.0f);
 
   sceGumMatrixMode(GU_MODEL);
   sceGumPushMatrix();
@@ -325,6 +325,7 @@ void SkyRenderer::renderSky(float playerX, float playerY, float playerZ, const S
   sceGuDisable(GU_TEXTURE_2D);
   sceGuDisable(GU_DEPTH_TEST); // Sky always draws behind everything
   sceGuDepthMask(GU_TRUE);     // No depth writes for sky
+  sceGuDisable(GU_ALPHA_TEST); // Alpha test must be OFF for solid sky geometry
 
   sceGuDisable(GU_CULL_FACE);
   sceGuColor(skyCol);
@@ -341,9 +342,16 @@ void SkyRenderer::renderSky(float playerX, float playerY, float playerZ, const S
     uint8_t dg = (uint8_t)((sg * 0.2f + 0.04f) * 255.0f);
     uint8_t db = (uint8_t)((sb * 0.6f + 0.10f) * 255.0f);
     uint32_t darkCol = 0xFF000000 | ((uint32_t)db << 16) | ((uint32_t)dg << 8) | dr;
+    
+    sceGumPushMatrix();
+    ScePspFVector3 bottomOffset = {0.0f, -(playerY - 16.0f), 0.0f};
+    sceGumTranslate(&bottomOffset);
+    
     sceGuColor(darkCol);
     sceGumDrawArray(GU_TRIANGLES, GU_VERTEX_32BITF | GU_TRANSFORM_3D,
                     m_numBottomVertices, 0, m_bottomVertices);
+                    
+    sceGumPopMatrix();
   }
   sceGuEnable(GU_CULL_FACE);
 
@@ -443,6 +451,7 @@ void SkyRenderer::renderSky(float playerX, float playerY, float playerZ, const S
   sceGuDepthMask(GU_FALSE);
   sceGuEnable(GU_CULL_FACE);
   sceGuEnable(GU_TEXTURE_2D);
+  sceGuEnable(GU_ALPHA_TEST); // Restore alpha test for world geometry
   sceGuEnable(GU_FOG);
 
   // CRITICAL: Restore the shorter world fog distances! 
