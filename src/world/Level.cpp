@@ -21,6 +21,14 @@ bool Level::isLavaBlock(uint8_t id) const {
   return id == BLOCK_LAVA_STILL || id == BLOCK_LAVA_FLOW;
 }
 
+bool Level::isFallingBlock(uint8_t id) const {
+  return id == BLOCK_SAND || id == BLOCK_GRAVEL;
+}
+
+bool Level::canFallThrough(uint8_t id) const {
+  return id == BLOCK_AIR || id == BLOCK_FIRE || isWaterBlock(id) || isLavaBlock(id);
+}
+
 void Level::setSimulationFocus(int wx, int wy, int wz, int radius) {
   m_simFocusX = wx;
   m_simFocusY = wy;
@@ -32,6 +40,7 @@ void Level::tick() {
   m_time += 1;
   if (m_waterDirty) tickWater();
   if (m_lavaDirty) tickLava();
+  tickFallingBlocks();
   if (m_waterWakeTicks > 0) m_waterWakeTicks--;
   if (m_lavaWakeTicks > 0) m_lavaWakeTicks--;
 }
@@ -366,6 +375,7 @@ Level::Level() {
   m_waterDue.resize(m_waterDepth.size(), -1);
   m_lavaDepth.resize(m_waterDepth.size(), 0xFF);
   m_lavaDue.resize(m_waterDepth.size(), -1);
+  m_fallDue.resize(m_waterDepth.size(), -1);
   for (int cx = 0; cx < WORLD_CHUNKS_X; cx++)
     for (int cz = 0; cz < WORLD_CHUNKS_Z; cz++)
       m_chunks[cx][cz] = new Chunk();
@@ -607,6 +617,128 @@ void Level::wakeLavaNeighborhood(int wx, int wy, int wz, int delayTicks) {
   }
 }
 
+int Level::fallIndex(int wx, int wy, int wz) const {
+  return waterIndex(wx, wy, wz);
+}
+
+void Level::scheduleFallCheck(int wx, int wy, int wz, int delayTicks) {
+  int maxX = WORLD_CHUNKS_X * CHUNK_SIZE_X;
+  int maxZ = WORLD_CHUNKS_Z * CHUNK_SIZE_Z;
+  if (wx < 0 || wx >= maxX || wz < 0 || wz >= maxZ || wy < 0 || wy >= CHUNK_SIZE_Y) return;
+  int idx = fallIndex(wx, wy, wz);
+  int due = (int)m_time + delayTicks;
+  if (idx < 0 || idx >= (int)m_fallDue.size()) return;
+  if (m_fallDue[idx] != -1 && m_fallDue[idx] <= due) return;
+  m_fallDue[idx] = due;
+  m_fallTicks.push({due, idx});
+}
+
+void Level::scheduleFallNeighborhood(int wx, int wy, int wz, int delayTicks) {
+  static const int dx[7] = {0, -1, 1, 0, 0, 0, 0};
+  static const int dy[7] = {0, 0, 0, -1, 1, 0, 0};
+  static const int dz[7] = {0, 0, 0, 0, 0, -1, 1};
+  for (int i = 0; i < 7; ++i) {
+    scheduleFallCheck(wx + dx[i], wy + dy[i], wz + dz[i], delayTicks);
+  }
+}
+
+void Level::processFallCheck(int wx, int wy, int wz) {
+  uint8_t id = getBlock(wx, wy, wz);
+  if (!isFallingBlock(id)) return;
+  if (wy <= 0) return;
+  if (!canFallThrough(getBlock(wx, wy - 1, wz))) return;
+
+  setBlock(wx, wy, wz, BLOCK_AIR);
+  FallingBlockEntity e;
+  e.x = (float)wx + 0.5f;
+  e.y = (float)wy + 0.5f;
+  e.z = (float)wz + 0.5f;
+  e.xd = 0.0f;
+  e.yd = 0.0f;
+  e.zd = 0.0f;
+  e.id = id;
+  e.age = 0;
+  e.removed = false;
+  m_fallingBlocks.push_back(e);
+}
+
+void Level::tickFallingBlocks() {
+  const int maxTicksPerWorldTick = 128;
+  int processed = 0;
+  while (processed < maxTicksPerWorldTick && !m_fallTicks.empty()) {
+    WaterTickNode n = m_fallTicks.top();
+    if (n.dueTick > (int)m_time) break;
+    m_fallTicks.pop();
+    if (n.idx < 0 || n.idx >= (int)m_fallDue.size()) continue;
+    if (m_fallDue[n.idx] != n.dueTick) continue;
+    m_fallDue[n.idx] = -1;
+
+    int maxX = WORLD_CHUNKS_X * CHUNK_SIZE_X;
+    int maxZ = WORLD_CHUNKS_Z * CHUNK_SIZE_Z;
+    int x = n.idx % maxX;
+    int tmp = n.idx / maxX;
+    int z = tmp % maxZ;
+    int y = tmp / maxZ;
+    processFallCheck(x, y, z);
+    processed++;
+  }
+
+  for (size_t i = 0; i < m_fallingBlocks.size(); ++i) {
+    FallingBlockEntity &e = m_fallingBlocks[i];
+    if (e.removed) continue;
+    e.age++;
+    e.yd -= 0.04f;
+    e.x += e.xd;
+    e.y += e.yd;
+    e.z += e.zd;
+    e.xd *= 0.98f;
+    e.yd *= 0.98f;
+    e.zd *= 0.98f;
+
+    int xt = (int)floorf(e.x);
+    int yt = (int)floorf(e.y);
+    int zt = (int)floorf(e.z);
+    if (xt < 0 || zt < 0 || xt >= WORLD_CHUNKS_X * CHUNK_SIZE_X || zt >= WORLD_CHUNKS_Z * CHUNK_SIZE_Z || yt < -1) {
+      e.removed = true;
+      continue;
+    }
+
+    int belowY = (int)floorf(e.y - 0.51f);
+    if (belowY < 0) {
+      int placeY = 0;
+      if (canFallThrough(getBlock(xt, placeY, zt))) {
+        setBlock(xt, placeY, zt, e.id);
+      }
+      e.removed = true;
+      continue;
+    }
+
+    if (!canFallThrough(getBlock(xt, belowY, zt))) {
+      int placeY = belowY + 1;
+      if (placeY >= 0 && placeY < CHUNK_SIZE_Y && canFallThrough(getBlock(xt, placeY, zt))) {
+        setBlock(xt, placeY, zt, e.id);
+      } else if (yt >= 0 && yt < CHUNK_SIZE_Y && canFallThrough(getBlock(xt, yt, zt))) {
+        setBlock(xt, yt, zt, e.id);
+      }
+      e.removed = true;
+      continue;
+    }
+
+    if (e.age > 100) {
+      int py = (int)floorf(e.y);
+      if (py >= 0 && py < CHUNK_SIZE_Y && canFallThrough(getBlock(xt, py, zt))) {
+        setBlock(xt, py, zt, e.id);
+      }
+      e.removed = true;
+    }
+  }
+
+  m_fallingBlocks.erase(
+      std::remove_if(m_fallingBlocks.begin(), m_fallingBlocks.end(),
+                     [](const FallingBlockEntity &e) { return e.removed; }),
+      m_fallingBlocks.end());
+}
+
 void Level::setBlock(int wx, int wy, int wz, uint8_t id) {
   static bool s_inCactusStabilize = false;
   int cx = wx >> 4;
@@ -617,6 +749,21 @@ void Level::setBlock(int wx, int wy, int wz, uint8_t id) {
   
   m_chunks[cx][cz]->setBlock(wx & 0xF, wy, wz & 0xF, id);
   markDirty(wx, wy, wz);
+  bool affectsFalling = isFallingBlock(oldId) || isFallingBlock(id);
+  if (!affectsFalling) {
+    static const int fdx[6] = {-1, 1, 0, 0, 0, 0};
+    static const int fdy[6] = {0, 0, -1, 1, 0, 0};
+    static const int fdz[6] = {0, 0, 0, 0, -1, 1};
+    for (int i = 0; i < 6; ++i) {
+      if (isFallingBlock(getBlock(wx + fdx[i], wy + fdy[i], wz + fdz[i]))) {
+        affectsFalling = true;
+        break;
+      }
+    }
+  }
+  if (affectsFalling) {
+    scheduleFallNeighborhood(wx, wy, wz, 2);
+  }
   if (isWaterBlock(id)) {
     setWaterDepth(wx, wy, wz, (id == BLOCK_WATER_STILL) ? 0 : 1);
     m_lavaDepth[waterIndex(wx, wy, wz)] = 0xFF;

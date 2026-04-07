@@ -13,6 +13,14 @@ static const long long TICKS_PER_DAY = 24000LL;
 
 class Level {
 public:
+  struct FallingBlockEntity {
+    float x, y, z;
+    float xd, yd, zd;
+    uint8_t id;
+    int age;
+    bool removed;
+  };
+
   Level();
   ~Level();
 
@@ -73,6 +81,7 @@ public:
 
   void tick();
   void setSimulationFocus(int wx, int wy, int wz, int radius);
+  const std::vector<FallingBlockEntity>& getFallingBlocks() const { return m_fallingBlocks; }
   bool saveToFile(const char *path) const;
   bool loadFromFile(const char *path);
 
@@ -97,6 +106,13 @@ private:
   void scheduleLavaTick(int wx, int wy, int wz, int delayTicks);
   void wakeLavaNeighborhood(int wx, int wy, int wz, int delayTicks);
   void processLavaCell(int wx, int wy, int wz);
+  bool isFallingBlock(uint8_t id) const;
+  bool canFallThrough(uint8_t id) const;
+  int fallIndex(int wx, int wy, int wz) const;
+  void scheduleFallCheck(int wx, int wy, int wz, int delayTicks);
+  void scheduleFallNeighborhood(int wx, int wy, int wz, int delayTicks);
+  void processFallCheck(int wx, int wy, int wz);
+  void tickFallingBlocks();
 
   Chunk *m_chunks[WORLD_CHUNKS_X][WORLD_CHUNKS_Z];
   std::vector<uint8_t> m_waterDepth;
@@ -105,6 +121,9 @@ private:
   std::vector<uint8_t> m_lavaDepth;
   std::priority_queue<WaterTickNode, std::vector<WaterTickNode>, std::greater<WaterTickNode>> m_lavaTicks;
   std::vector<int> m_lavaDue;
+  std::vector<int> m_fallDue;
+  std::priority_queue<WaterTickNode, std::vector<WaterTickNode>, std::greater<WaterTickNode>> m_fallTicks;
+  std::vector<FallingBlockEntity> m_fallingBlocks;
   long long m_time = 6000LL;
   float m_lastSunBrightness = 1.0f;
   int m_simFocusX = -1;
