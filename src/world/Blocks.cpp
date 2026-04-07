@@ -99,7 +99,7 @@ void Blocks_Init() {
   DEF_PROPS(BLOCK_SNOW, 2, 0, 0, TRANSP);
   DEF_PROPS(BLOCK_ICE, 5, 0, 3, SOLID | TRANSP);
   DEF_PROPS(BLOCK_SNOW_BLOCK, 2, 0, 15, SOLID);
-  DEF_PROPS(BLOCK_CACTUS, 2, 0, 0, TRANSP);
+  DEF_PROPS(BLOCK_CACTUS, 2, 0, 0, SOLID | TRANSP);
   DEF_PROPS(BLOCK_CLAY, 6, 0, 15, SOLID);
   DEF_PROPS(BLOCK_NETHERRACK, 4, 0, 15, SOLID);
   DEF_PROPS(BLOCK_GLOWSTONE, 3, 15, 15, SOLID);
@@ -125,6 +125,8 @@ void Blocks_Init() {
   setBounds(BLOCK_SAPLING,   0.2f, 0.0f, 0.2f, 0.8f, 0.8f, 0.8f);
   setBounds(BLOCK_TORCH,     0.4f, 0.0f, 0.4f, 0.6f, 0.6f, 0.6f);
   setBounds(BLOCK_CHEST,     0.0625f, 0.0f, 0.0625f, 0.9375f, 0.875f, 0.9375f);
+  // MCPE cactus is inset by 1/16 on X/Z (not a full cube).
+  setBounds(BLOCK_CACTUS,    0.0625f, 0.0f, 0.0625f, 0.9375f, 1.0f, 0.9375f);
   setBounds(BLOCK_REEDS,     0.2f, 0.0f, 0.2f, 0.8f, 1.0f, 0.8f);
   setBounds(BLOCK_SNOW,      0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
 

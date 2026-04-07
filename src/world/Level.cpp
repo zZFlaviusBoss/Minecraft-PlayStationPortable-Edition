@@ -490,6 +490,7 @@ void Level::wakeLavaNeighborhood(int wx, int wy, int wz, int delayTicks) {
 }
 
 void Level::setBlock(int wx, int wy, int wz, uint8_t id) {
+  static bool s_inCactusStabilize = false;
   int cx = wx >> 4;
   int cz = wz >> 4;
   if (cx < 0 || cx >= WORLD_CHUNKS_X || cz < 0 || cz >= WORLD_CHUNKS_Z || wy < 0 || wy >= CHUNK_SIZE_Y) return;
@@ -542,6 +543,41 @@ void Level::setBlock(int wx, int wy, int wz, uint8_t id) {
   }
 
   updateLight(wx, wy, wz);
+
+  // MCPE-like cactus survival:
+  // - must stand on sand or cactus
+  // - must have no solid horizontal neighbors
+  // If support/neighbor changes, collapse invalid cactus blocks in the affected
+  // column and adjacent columns immediately (matching classic MCPE behavior).
+  if (!s_inCactusStabilize) {
+    s_inCactusStabilize = true;
+    auto canStayCactus = [&](int x, int y, int z) -> bool {
+      if (getBlock(x, y, z) != BLOCK_CACTUS) return true;
+      uint8_t below = getBlock(x, y - 1, z);
+      if (below != BLOCK_SAND && below != BLOCK_CACTUS) return false;
+      if (g_blockProps[getBlock(x - 1, y, z)].isSolid()) return false;
+      if (g_blockProps[getBlock(x + 1, y, z)].isSolid()) return false;
+      if (g_blockProps[getBlock(x, y, z - 1)].isSolid()) return false;
+      if (g_blockProps[getBlock(x, y, z + 1)].isSolid()) return false;
+      return true;
+    };
+    auto stabilizeColumn = [&](int x, int z) {
+      for (int y = 0; y < CHUNK_SIZE_Y; ++y) {
+        if (getBlock(x, y, z) == BLOCK_CACTUS && !canStayCactus(x, y, z)) {
+          for (int cy = y; cy < CHUNK_SIZE_Y && getBlock(x, cy, z) == BLOCK_CACTUS; ++cy) {
+            setBlock(x, cy, z, BLOCK_AIR);
+          }
+          break;
+        }
+      }
+    };
+    stabilizeColumn(wx, wz);
+    stabilizeColumn(wx - 1, wz);
+    stabilizeColumn(wx + 1, wz);
+    stabilizeColumn(wx, wz - 1);
+    stabilizeColumn(wx, wz + 1);
+    s_inCactusStabilize = false;
+  }
 }
 
 std::vector<AABB> Level::getCubes(const AABB& box) const {
@@ -565,9 +601,9 @@ std::vector<AABB> Level::getCubes(const AABB& box) const {
       for (int z = z0; z < z1; z++) {
         uint8_t id = getBlock(x, y, z);
         if (id > 0 && g_blockProps[id].isSolid()) {
-          // Create bounding box
-          boxes.push_back(AABB((double)x, (double)y, (double)z,
-                               (double)(x + 1), (double)(y + 1), (double)(z + 1)));
+          const BlockProps &bp = g_blockProps[id];
+          boxes.push_back(AABB((double)x + bp.minX, (double)y + bp.minY, (double)z + bp.minZ,
+                               (double)x + bp.maxX, (double)y + bp.maxY, (double)z + bp.maxZ));
         }
       }
     }

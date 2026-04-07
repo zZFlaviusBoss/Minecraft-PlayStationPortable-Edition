@@ -294,12 +294,6 @@ void Player::updateInteraction(float dt) {
             level->markDirty(bx, by, bz - 1, ((bz & 0xF) == 0) ? 20 : 0, false);
             level->markDirty(bx, by, bz + 1, ((bz & 0xF) == 15) ? 20 : 0, false);
 
-            // Cascading plant break
-            uint8_t topId = level->getBlock(bx, by + 1, bz);
-            if (topId != BLOCK_AIR && !g_blockProps[topId].isSolid() && !g_blockProps[topId].isLiquid()) {
-                level->setBlock(bx, by + 1, bz, BLOCK_AIR);
-                level->markDirty(bx, by + 1, bz);
-            }
         }
     }
 
@@ -321,6 +315,18 @@ void Player::updateInteraction(float dt) {
             heldBlock == BLOCK_ROSE || heldBlock == BLOCK_MUSHROOM_BROWN || heldBlock == BLOCK_MUSHROOM_RED) {
             uint8_t floorId = level->getBlock(px, py - 1, pz);
             if (floorId != BLOCK_GRASS && floorId != BLOCK_DIRT && floorId != BLOCK_FARMLAND) {
+                canPlace = false;
+            }
+        }
+        if (heldBlock == BLOCK_CACTUS) {
+            uint8_t floorId = level->getBlock(px, py - 1, pz);
+            if (floorId != BLOCK_SAND && floorId != BLOCK_CACTUS) {
+                canPlace = false;
+            }
+            if (g_blockProps[level->getBlock(px - 1, py, pz)].isSolid() ||
+                g_blockProps[level->getBlock(px + 1, py, pz)].isSolid() ||
+                g_blockProps[level->getBlock(px, py, pz - 1)].isSolid() ||
+                g_blockProps[level->getBlock(px, py, pz + 1)].isSolid()) {
                 canPlace = false;
             }
         }
