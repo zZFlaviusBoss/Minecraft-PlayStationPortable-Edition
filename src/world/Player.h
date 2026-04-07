@@ -43,6 +43,7 @@ private:
     float sprintDoubleTapTimer;
     bool prevForwardHeld;
     bool wasInWater;
+    bool prevAutoJumpCollision;
 
     RayHit hitResult;
     uint8_t heldBlock;
