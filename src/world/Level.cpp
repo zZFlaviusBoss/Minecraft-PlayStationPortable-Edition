@@ -436,6 +436,124 @@ uint8_t Level::getLavaDepth(int wx, int wy, int wz) const {
   return m_lavaDepth[waterIndex(wx, wy, wz)];
 }
 
+bool Level::applyWaterCurrent(const AABB& box, float& velX, float& velY, float& velZ) const {
+  int x0 = (int)floor(box.x0);
+  int x1 = (int)floor(box.x1 + 1.0);
+  int y0 = (int)floor(box.y0);
+  int y1 = (int)floor(box.y1 + 1.0);
+  int z0 = (int)floor(box.z0);
+  int z1 = (int)floor(box.z1 + 1.0);
+
+  int maxX = WORLD_CHUNKS_X * CHUNK_SIZE_X;
+  int maxZ = WORLD_CHUNKS_Z * CHUNK_SIZE_Z;
+  if (x0 < 0 || z0 < 0 || y0 < 0 || x1 > maxX || z1 > maxZ || y1 > CHUNK_SIZE_Y) return false;
+
+  auto getRenderedDepth = [&](int wx, int wy, int wz) -> int {
+    uint8_t bid = getBlock(wx, wy, wz);
+    if (!isWaterBlock(bid)) return -1;
+    uint8_t d = getWaterDepth(wx, wy, wz);
+    if (d == 0xFF) d = (bid == BLOCK_WATER_STILL) ? 0 : 1;
+    if (d >= 8) d = 0;
+    return (int)d;
+  };
+
+  auto shouldRenderFace = [&](int wx, int wy, int wz) -> bool {
+    uint8_t bid = getBlock(wx, wy, wz);
+    return !isWaterBlock(bid) && bid != BLOCK_ICE;
+  };
+
+  auto addFlowForCell = [&](int wx, int wy, int wz, double& fx, double& fy, double& fz) {
+    const int mid = getRenderedDepth(wx, wy, wz);
+    if (mid < 0) return;
+
+    double cellX = 0.0, cellY = 0.0, cellZ = 0.0;
+    static const int dx[4] = {-1, 0, 1, 0};
+    static const int dz[4] = {0, -1, 0, 1};
+    for (int d = 0; d < 4; ++d) {
+      const int nx = wx + dx[d];
+      const int nz = wz + dz[d];
+      int nd = getRenderedDepth(nx, wy, nz);
+      if (nd < 0) {
+        if (!g_blockProps[getBlock(nx, wy, nz)].isSolid()) {
+          nd = getRenderedDepth(nx, wy - 1, nz);
+          if (nd >= 0) {
+            const int dir = nd - (mid - 8);
+            cellX += (double)(nx - wx) * (double)dir;
+            cellY += 0.0;
+            cellZ += (double)(nz - wz) * (double)dir;
+          }
+        }
+      } else {
+        const int dir = nd - mid;
+        cellX += (double)(nx - wx) * (double)dir;
+        cellY += 0.0;
+        cellZ += (double)(nz - wz) * (double)dir;
+      }
+    }
+
+    uint8_t d = getWaterDepth(wx, wy, wz);
+    if (d != 0xFF && d >= 8) {
+      bool falling = false;
+      if (shouldRenderFace(wx, wy, wz - 1)) falling = true;
+      if (shouldRenderFace(wx, wy, wz + 1)) falling = true;
+      if (shouldRenderFace(wx - 1, wy, wz)) falling = true;
+      if (shouldRenderFace(wx + 1, wy, wz)) falling = true;
+      if (shouldRenderFace(wx, wy + 1, wz - 1)) falling = true;
+      if (shouldRenderFace(wx, wy + 1, wz + 1)) falling = true;
+      if (shouldRenderFace(wx - 1, wy + 1, wz)) falling = true;
+      if (shouldRenderFace(wx + 1, wy + 1, wz)) falling = true;
+      if (falling) {
+        double len = sqrt(cellX * cellX + cellY * cellY + cellZ * cellZ);
+        if (len > 0.00001) {
+          cellX /= len;
+          cellY /= len;
+          cellZ /= len;
+        }
+        cellY += -6.0;
+      }
+    }
+
+    double len = sqrt(cellX * cellX + cellY * cellY + cellZ * cellZ);
+    if (len > 0.00001) {
+      cellX /= len;
+      cellY /= len;
+      cellZ /= len;
+    }
+
+    fx += cellX * 0.5;
+    fy += cellY * 0.5;
+    fz += cellZ * 0.5;
+  };
+
+  bool inWater = false;
+  double flowX = 0.0, flowY = 0.0, flowZ = 0.0;
+  for (int wx = x0; wx < x1; ++wx) {
+    for (int wy = y0; wy < y1; ++wy) {
+      for (int wz = z0; wz < z1; ++wz) {
+        uint8_t bid = getBlock(wx, wy, wz);
+        if (!isWaterBlock(bid)) continue;
+        uint8_t d = getWaterDepth(wx, wy, wz);
+        if (d == 0xFF) d = (bid == BLOCK_WATER_STILL) ? 0 : 1;
+        if (d >= 8) d = 0;
+        const float liquidHeight = (float)(wy + 1) - (float)(d + 1) / 9.0f;
+        if ((float)y1 >= liquidHeight) {
+          inWater = true;
+          addFlowForCell(wx, wy, wz, flowX, flowY, flowZ);
+        }
+      }
+    }
+  }
+
+  const double len = sqrt(flowX * flowX + flowY * flowY + flowZ * flowZ);
+  if (len > 0.0) {
+    const float p = (float)(0.004 / len);
+    velX += (float)flowX * p;
+    velY += (float)flowY * p;
+    velZ += (float)flowZ * p;
+  }
+  return inWater;
+}
+
 void Level::setWaterDepth(int wx, int wy, int wz, uint8_t depth) {
   int maxX = WORLD_CHUNKS_X * CHUNK_SIZE_X;
   int maxZ = WORLD_CHUNKS_Z * CHUNK_SIZE_Z;

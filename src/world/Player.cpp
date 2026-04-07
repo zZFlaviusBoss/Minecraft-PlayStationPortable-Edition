@@ -122,6 +122,8 @@ void Player::updateInputAndPhysics(float dt) {
     uint8_t feetBlock = level->getBlock((int)floorf(x), (int)floorf(y), (int)floorf(z));
     uint8_t headBlock = level->getBlock((int)floorf(x), (int)floorf(y + 1.6f), (int)floorf(z));
     bool inWater = g_blockProps[feetBlock].isLiquid() || g_blockProps[headBlock].isLiquid();
+    AABB waterCheckBox(x - R, y, z - R, x + R, y + H, z + R);
+    inWater = level->applyWaterCurrent(waterCheckBox, velX, velY, velZ) || inWater;
     if (!inWater && wasInWater && velY > 0.42f) {
         velY = 0.42f; // prevent launch when crossing water surface
     }
@@ -194,6 +196,9 @@ void Player::updateInputAndPhysics(float dt) {
                 float accel = (onGround ? (0.1f * friction2) : 0.02f) * sprintMul * step;
                 moveRelative(xa, ya, accel);
             }
+
+            AABB stepWaterCheckBox(x - R, y, z - R, x + R, y + H, z + R);
+            inWater = level->applyWaterCurrent(stepWaterCheckBox, velX, velY, velZ) || inWater;
 
             float dx = velX * step;
             float dy = velY * step;

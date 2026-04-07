@@ -31,6 +31,7 @@ public:
   uint8_t getWaterDepth(int wx, int wy, int wz) const;
   uint8_t getLavaDepth(int wx, int wy, int wz) const;
   void setWaterDepth(int wx, int wy, int wz, uint8_t depth);
+  bool applyWaterCurrent(const AABB& box, float& velX, float& velY, float& velZ) const;
 
   uint8_t getSkyLight(int wx, int wy, int wz) const;
   uint8_t getBlockLight(int wx, int wy, int wz) const;
