@@ -534,6 +534,12 @@ static const char* getBlockDisplayName(uint8_t id) {
     case BLOCK_BRICK_SLAB_TOP: return "Brick Slab";
     case BLOCK_STONE_BRICK_SLAB: return "Stone Brick Slab";
     case BLOCK_STONE_BRICK_SLAB_TOP: return "Stone Brick Slab";
+    case BLOCK_STONE_STAIR: return "Stone Stairs";
+    case BLOCK_WOOD_STAIR: return "Wooden Stairs";
+    case BLOCK_COBBLE_STAIR: return "Cobblestone Stairs";
+    case BLOCK_SANDSTONE_STAIR: return "Sandstone Stairs";
+    case BLOCK_BRICK_STAIR: return "Brick Stairs";
+    case BLOCK_STONE_BRICK_STAIR: return "Stone Brick Stairs";
     case BLOCK_WOOL: return "Wool";
     case BLOCK_WOOL_ORANGE: return "Orange Wool";
     case BLOCK_WOOL_MAGENTA: return "Magenta Wool";

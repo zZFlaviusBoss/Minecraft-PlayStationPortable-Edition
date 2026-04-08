@@ -110,6 +110,14 @@ void Blocks_Init() {
   DEF_PROPS(BLOCK_MOSSY_COBBLE, 20, 0, 15, SOLID);
   DEF_PROPS(BLOCK_COBBLE_SLAB, 20, 0, 15, SOLID);
   DEF_PROPS(BLOCK_WOOD_SLAB, 15, 0, 15, SOLID);
+  // Stairs are solid for collision, but should not behave like fully opaque cubes
+  // for light propagation/occlusion.
+  DEF_PROPS(BLOCK_WOOD_STAIR, 15, 0, 0, SOLID | TRANSP);
+  DEF_PROPS(BLOCK_COBBLE_STAIR, 20, 0, 0, SOLID | TRANSP);
+  DEF_PROPS(BLOCK_STONE_STAIR, 15, 0, 0, SOLID | TRANSP);
+  DEF_PROPS(BLOCK_SANDSTONE_STAIR, 8, 0, 0, SOLID | TRANSP);
+  DEF_PROPS(BLOCK_BRICK_STAIR, 20, 0, 0, SOLID | TRANSP);
+  DEF_PROPS(BLOCK_STONE_BRICK_STAIR, 25, 0, 0, SOLID | TRANSP);
   DEF_PROPS(BLOCK_SANDSTONE_SLAB, 8, 0, 15, SOLID);
   DEF_PROPS(BLOCK_STONE_BRICKS, 25, 0, 15, SOLID);
   DEF_PROPS(BLOCK_STONE_BRICK_SLAB, 25, 0, 15, SOLID);
@@ -145,6 +153,12 @@ void Blocks_Init() {
   setBounds(BLOCK_STONE_SLAB,       0.0f, 0.0f, 0.0f, 1.0f, 0.5f, 1.0f);
   setBounds(BLOCK_WOOD_SLAB,        0.0f, 0.0f, 0.0f, 1.0f, 0.5f, 1.0f);
   setBounds(BLOCK_COBBLE_SLAB,      0.0f, 0.0f, 0.0f, 1.0f, 0.5f, 1.0f);
+  setBounds(BLOCK_WOOD_STAIR,       0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
+  setBounds(BLOCK_COBBLE_STAIR,     0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
+  setBounds(BLOCK_STONE_STAIR,      0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
+  setBounds(BLOCK_SANDSTONE_STAIR,  0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
+  setBounds(BLOCK_BRICK_STAIR,      0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
+  setBounds(BLOCK_STONE_BRICK_STAIR,0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
   setBounds(BLOCK_SANDSTONE_SLAB,   0.0f, 0.0f, 0.0f, 1.0f, 0.5f, 1.0f);
   setBounds(BLOCK_BRICK_SLAB,       0.0f, 0.0f, 0.0f, 1.0f, 0.5f, 1.0f);
   setBounds(BLOCK_STONE_BRICK_SLAB, 0.0f, 0.0f, 0.0f, 1.0f, 0.5f, 1.0f);
@@ -214,6 +228,12 @@ void Blocks_Init() {
   DEF_UV(BLOCK_MOSSY_COBBLE, 4, 2, 4, 2, 4, 2);
   DEF_UV(BLOCK_COBBLE_SLAB, 0, 1, 0, 1, 0, 1);
   DEF_UV(BLOCK_WOOD_SLAB, 4, 0, 4, 0, 4, 0);
+  DEF_UV(BLOCK_WOOD_STAIR, 4, 0, 4, 0, 4, 0);
+  DEF_UV(BLOCK_COBBLE_STAIR, 0, 1, 0, 1, 0, 1);
+  DEF_UV(BLOCK_STONE_STAIR, 1, 0, 1, 0, 1, 0);
+  DEF_UV(BLOCK_SANDSTONE_STAIR, 0, 12, 0, 11, 0, 13);
+  DEF_UV(BLOCK_BRICK_STAIR, 7, 0, 7, 0, 7, 0);
+  DEF_UV(BLOCK_STONE_BRICK_STAIR, 6, 3, 6, 3, 6, 3);
   DEF_UV(BLOCK_SANDSTONE_SLAB, 0, 12, 0, 11, 0, 13);
   DEF_UV(BLOCK_STONE_SLAB_TOP, 1, 0, 1, 0, 1, 0);
   DEF_UV(BLOCK_WOOD_SLAB_TOP, 4, 0, 4, 0, 4, 0);

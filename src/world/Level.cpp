@@ -861,6 +861,10 @@ void Level::setBlock(int wx, int wy, int wz, uint8_t id) {
 }
 
 std::vector<AABB> Level::getCubes(const AABB& box) const {
+  auto isStairBlock = [](uint8_t id) {
+    return id == BLOCK_STONE_STAIR || id == BLOCK_WOOD_STAIR || id == BLOCK_COBBLE_STAIR ||
+           id == BLOCK_SANDSTONE_STAIR || id == BLOCK_BRICK_STAIR || id == BLOCK_STONE_BRICK_STAIR;
+  };
   std::vector<AABB> boxes;
   int x0 = (int)floorf(box.x0);
   int x1 = (int)floorf(box.x1 + 1.0f);
@@ -881,6 +885,14 @@ std::vector<AABB> Level::getCubes(const AABB& box) const {
       for (int z = z0; z < z1; z++) {
         uint8_t id = getBlock(x, y, z);
         if (id > 0 && g_blockProps[id].isSolid()) {
+          if (isStairBlock(id)) {
+            // Fixed-orientation stair collision: lower full step + upper rear step.
+            boxes.push_back(AABB((double)x, (double)y, (double)z,
+                                 (double)x + 1.0, (double)y + 0.5, (double)z + 1.0));
+            boxes.push_back(AABB((double)x, (double)y + 0.5, (double)z + 0.5,
+                                 (double)x + 1.0, (double)y + 1.0, (double)z + 1.0));
+            continue;
+          }
           const BlockProps &bp = g_blockProps[id];
           boxes.push_back(AABB((double)x + bp.minX, (double)y + bp.minY, (double)z + bp.minZ,
                                (double)x + bp.maxX, (double)y + bp.maxY, (double)z + bp.maxZ));

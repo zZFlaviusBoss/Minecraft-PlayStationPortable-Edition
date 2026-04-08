@@ -44,12 +44,8 @@ RayHit raycast(Level *level, float ox, float oy, float oz,
   float dist = 0.0f;
   int lastFace = 0;
 
-  auto rayHitsBlockAABB = [&](int bx, int by, int bz, uint8_t id, int &outFace, float &outT) -> bool {
-    const BlockProps &bp = g_blockProps[id];
-    float minX = (float)bx + bp.minX, maxX = (float)bx + bp.maxX;
-    float minY = (float)by + bp.minY, maxY = (float)by + bp.maxY;
-    float minZ = (float)bz + bp.minZ, maxZ = (float)bz + bp.maxZ;
-
+  auto rayHitsAABB = [&](float minX, float maxX, float minY, float maxY, float minZ, float maxZ,
+                         int &outFace, float &outT) -> bool {
     float tMin = 0.0f;
     float tMax = maxDist;
     int hitFace = lastFace;
@@ -84,6 +80,19 @@ RayHit raycast(Level *level, float ox, float oy, float oz,
     return true;
   };
 
+  auto rayHitsBlockAABB = [&](int bx, int by, int bz, uint8_t id, int &outFace, float &outT) -> bool {
+    const BlockProps &bp = g_blockProps[id];
+    return rayHitsAABB((float)bx + bp.minX, (float)bx + bp.maxX,
+                       (float)by + bp.minY, (float)by + bp.maxY,
+                       (float)bz + bp.minZ, (float)bz + bp.maxZ,
+                       outFace, outT);
+  };
+
+  auto isStairBlock = [](uint8_t id) {
+    return id == BLOCK_STONE_STAIR || id == BLOCK_WOOD_STAIR || id == BLOCK_COBBLE_STAIR ||
+           id == BLOCK_SANDSTONE_STAIR || id == BLOCK_BRICK_STAIR || id == BLOCK_STONE_BRICK_STAIR;
+  };
+
   // Step through grid
   for (int i = 0; i < 200 && dist < maxDist; i++) {
     // Check current block
@@ -93,13 +102,40 @@ RayHit raycast(Level *level, float ox, float oy, float oz,
       bool customBounds =
           (bp.minX > 0.0f || bp.minY > 0.0f || bp.minZ > 0.0f ||
            bp.maxX < 1.0f || bp.maxY < 1.0f || bp.maxZ < 1.0f);
+      if (isStairBlock(id)) customBounds = true;
 
       int hitFace = lastFace;
       float hitT = dist;
-      if (customBounds && !rayHitsBlockAABB(mapX, mapY, mapZ, id, hitFace, hitT)) {
+      bool hitThisVoxel = true;
+      if (customBounds && isStairBlock(id)) {
+        int faceL = lastFace; float tL = dist;
+        bool hitL = rayHitsAABB((float)mapX, (float)mapX + 1.0f,
+                                (float)mapY, (float)mapY + 0.5f,
+                                (float)mapZ, (float)mapZ + 1.0f,
+                                faceL, tL);
+        int faceU = lastFace; float tU = dist;
+        bool hitU = rayHitsAABB((float)mapX, (float)mapX + 1.0f,
+                                (float)mapY + 0.5f, (float)mapY + 1.0f,
+                                (float)mapZ + 0.5f, (float)mapZ + 1.0f,
+                                faceU, tU);
+
+        if (!hitL && !hitU) {
+          // missed both stair boxes; continue stepping
+          hitThisVoxel = false;
+        } else if (hitL && (!hitU || tL <= tU)) {
+          hitFace = faceL;
+          hitT = tL;
+        } else {
+          hitFace = faceU;
+          hitT = tU;
+        }
+      } else if (customBounds && !rayHitsBlockAABB(mapX, mapY, mapZ, id, hitFace, hitT)) {
         // Ray entered this voxel cell but missed actual partial bounds
         // (e.g. slabs/cactus). Keep stepping.
-      } else {
+        hitThisVoxel = false;
+      }
+
+      if (hitThisVoxel) {
       result.hit = true;
       result.x = mapX;
       result.y = mapY;

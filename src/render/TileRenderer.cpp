@@ -21,6 +21,11 @@ static inline bool isSlabBlock(uint8_t id) {
          id == BLOCK_SANDSTONE_SLAB_TOP || id == BLOCK_BRICK_SLAB_TOP || id == BLOCK_STONE_BRICK_SLAB_TOP;
 }
 
+static inline bool isStairBlock(uint8_t id) {
+  return id == BLOCK_STONE_STAIR || id == BLOCK_WOOD_STAIR || id == BLOCK_COBBLE_STAIR ||
+         id == BLOCK_SANDSTONE_STAIR || id == BLOCK_BRICK_STAIR || id == BLOCK_STONE_BRICK_STAIR;
+}
+
 TileRenderer::TileRenderer(Level *level, Tesselator *opaqueTess, Tesselator *transTess,
                            Tesselator *fancyTess, Tesselator *emitTess)
     : m_level(level), m_opaqueTess(opaqueTess), m_transTess(transTess),
@@ -153,6 +158,11 @@ bool TileRenderer::needFace(int lx, int ly, int lz, int cx, int cz, uint8_t id, 
   const BlockProps &bp = g_blockProps[id];
 
   if (g_blockProps[nb].isOpaque()) {
+    // Stairs are partial geometry and should never fully occlude a neighboring
+    // block face like a full cube does.
+    if (isStairBlock(id) || isStairBlock(nb)) {
+      return true;
+    }
     if (dy == 1 || dy == -1) {
       const BlockProps &nbp = g_blockProps[nb];
       const float epsY = 0.0001f;
@@ -189,7 +199,7 @@ bool TileRenderer::needFace(int lx, int ly, int lz, int cx, int cz, uint8_t id, 
   if (bp.isLiquid() && g_blockProps[nb].isLiquid())
     return false;
 
-  if (nb == id && (bp.isTransparent()))
+  if (nb == id && bp.isTransparent() && !isStairBlock(id))
     return false;
 
   return true;
@@ -510,6 +520,154 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
     addSide(0, 1);
     addSide(-1, 0);
     addSide(1, 0);
+    return drawn;
+  }
+
+  if (isStairBlock(id)) {
+    const BlockUV &uv = g_blockUV[id];
+    float wx = (float)(cx * CHUNK_SIZE_X + lx);
+    float wy = (float)ly;
+    float wz = (float)(cz * CHUNK_SIZE_Z + lz);
+    int wX = cx * CHUNK_SIZE_X + lx;
+    int wY = ly;
+    int wZ = cz * CHUNK_SIZE_Z + lz;
+    const float ts = 1.0f / 16.0f;
+    const float eps = 0.125f / 256.0f;
+    bool drawn = false;
+    bool isFancy = false;
+
+    const float uTop0 = uv.top_x * ts + eps;
+    const float vTop0 = uv.top_y * ts + eps;
+    const float uTop1 = (uv.top_x + 1) * ts - eps;
+    const float vTop1 = (uv.top_y + 1) * ts - eps;
+    const float vTopHalf = vTop0 + (vTop1 - vTop0) * 0.5f;
+    const float uSide0 = uv.side_x * ts + eps;
+    const float vSide0 = uv.side_y * ts + eps;
+    const float uSide1 = (uv.side_x + 1) * ts - eps;
+    const float vSide1 = (uv.side_y + 1) * ts - eps;
+    const float uSideHalf = uSide0 + (uSide1 - uSide0) * 0.5f;
+    const float vSideHalf = vSide0 + (vSide1 - vSide0) * 0.5f;
+    const float uBot0 = uv.bot_x * ts + eps;
+    const float vBot0 = uv.bot_y * ts + eps;
+    const float uBot1 = (uv.bot_x + 1) * ts - eps;
+    const float vBot1 = (uv.bot_y + 1) * ts - eps;
+
+    Tesselator *t = m_opaqueTess;
+
+    // Per-vertex face colors (same sampling style as full blocks) to avoid
+    // flat-looking stair lighting.
+    uint32_t topC00 = applyLightToFace(LIGHT_TOP, getVertexSkyLight(wX, wY + 1, wZ, -1, 0, 0, 0, 0, -1));
+    uint32_t topC10 = applyLightToFace(LIGHT_TOP, getVertexSkyLight(wX, wY + 1, wZ,  1, 0, 0, 0, 0, -1));
+    uint32_t topC01 = applyLightToFace(LIGHT_TOP, getVertexSkyLight(wX, wY + 1, wZ, -1, 0, 0, 0, 0,  1));
+    uint32_t topC11 = applyLightToFace(LIGHT_TOP, getVertexSkyLight(wX, wY + 1, wZ,  1, 0, 0, 0, 0,  1));
+    uint32_t botC00 = applyLightToFace(LIGHT_BOT, getVertexSkyLight(wX, wY - 1, wZ, -1, 0, 0, 0, 0, -1));
+    uint32_t botC10 = applyLightToFace(LIGHT_BOT, getVertexSkyLight(wX, wY - 1, wZ,  1, 0, 0, 0, 0, -1));
+    uint32_t botC01 = applyLightToFace(LIGHT_BOT, getVertexSkyLight(wX, wY - 1, wZ, -1, 0, 0, 0, 0,  1));
+    uint32_t botC11 = applyLightToFace(LIGHT_BOT, getVertexSkyLight(wX, wY - 1, wZ,  1, 0, 0, 0, 0,  1));
+    uint32_t northC11 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ - 1,  1, 0, 0, 0, 1, 0));
+    uint32_t northC01 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ - 1, -1, 0, 0, 0, 1, 0));
+    uint32_t northC10 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ - 1,  1, 0, 0, 0,-1, 0));
+    uint32_t northC00 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ - 1, -1, 0, 0, 0,-1, 0));
+    uint32_t southC01 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ + 1, -1, 0, 0, 0, 1, 0));
+    uint32_t southC11 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ + 1,  1, 0, 0, 0, 1, 0));
+    uint32_t southC00 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ + 1, -1, 0, 0, 0,-1, 0));
+    uint32_t southC10 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ + 1,  1, 0, 0, 0,-1, 0));
+    uint32_t westC01 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX - 1, wY, wZ, 0, 1, 0, 0, 0,-1));
+    uint32_t westC11 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX - 1, wY, wZ, 0, 1, 0, 0, 0, 1));
+    uint32_t westC00 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX - 1, wY, wZ, 0,-1, 0, 0, 0,-1));
+    uint32_t westC10 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX - 1, wY, wZ, 0,-1, 0, 0, 0, 1));
+    uint32_t eastC11 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX + 1, wY, wZ, 0, 1, 0, 0, 0, 1));
+    uint32_t eastC01 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX + 1, wY, wZ, 0, 1, 0, 0, 0,-1));
+    uint32_t eastC10 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX + 1, wY, wZ, 0,-1, 0, 0, 0, 1));
+    uint32_t eastC00 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX + 1, wY, wZ, 0,-1, 0, 0, 0,-1));
+    auto lerpColor = [](uint32_t a, uint32_t b, float t) -> uint32_t {
+      uint8_t aa = (a >> 24) & 0xFF, ba = (b >> 24) & 0xFF;
+      uint8_t ab = (a >> 16) & 0xFF, bb = (b >> 16) & 0xFF;
+      uint8_t ag = (a >> 8)  & 0xFF, bg = (b >> 8)  & 0xFF;
+      uint8_t ar =  a        & 0xFF, br =  b        & 0xFF;
+      uint8_t oa = (uint8_t)(aa + (ba - aa) * t);
+      uint8_t ob = (uint8_t)(ab + (bb - ab) * t);
+      uint8_t og = (uint8_t)(ag + (bg - ag) * t);
+      uint8_t orr = (uint8_t)(ar + (br - ar) * t);
+      return ((uint32_t)oa << 24) | ((uint32_t)ob << 16) | ((uint32_t)og << 8) | (uint32_t)orr;
+    };
+    uint32_t westMidZ0 = lerpColor(westC00, westC01, 0.5f);
+    uint32_t westMidZ1 = lerpColor(westC10, westC11, 0.5f);
+    uint32_t eastMidZ1 = lerpColor(eastC10, eastC11, 0.5f);
+    uint32_t eastMidZ0 = lerpColor(eastC00, eastC01, 0.5f);
+    uint32_t northMidR = lerpColor(northC10, northC11, 0.5f);
+    uint32_t northMidL = lerpColor(northC00, northC01, 0.5f);
+
+    // Top of lower step (front half, y = 0.5, z:0..0.5)
+    if (needFace(lx, ly, lz, cx, cz, id, 0, 1, 0, isFancy)) {
+      t->addQuad(uTop0, vTop0, uTop1, vTopHalf, topC00, topC10, topC01, topC11,
+                 wx, wy + 0.5f, wz, wx + 1.0f, wy + 0.5f, wz,
+                 wx, wy + 0.5f, wz + 0.5f, wx + 1.0f, wy + 0.5f, wz + 0.5f);
+      drawn = true;
+    }
+
+    // Top of upper step (rear half, z:0.5..1.0, y = 1.0)
+    if (needFace(lx, ly, lz, cx, cz, id, 0, 1, 0, isFancy)) {
+      t->addQuad(uTop0, vTopHalf, uTop1, vTop1, topC00, topC10, topC01, topC11,
+                 wx, wy + 1.0f, wz + 0.5f, wx + 1.0f, wy + 1.0f, wz + 0.5f,
+                 wx, wy + 1.0f, wz + 1.0f, wx + 1.0f, wy + 1.0f, wz + 1.0f);
+      drawn = true;
+    }
+
+    // Bottom
+    if (needFace(lx, ly, lz, cx, cz, id, 0, -1, 0, isFancy)) {
+      t->addQuad(uBot0, vBot0, uBot1, vBot1, botC01, botC11, botC00, botC10,
+                 wx, wy, wz + 1.0f, wx + 1.0f, wy, wz + 1.0f,
+                 wx, wy, wz, wx + 1.0f, wy, wz);
+      drawn = true;
+    }
+
+    // North face (front): half height
+    if (needFace(lx, ly, lz, cx, cz, id, 0, 0, -1, isFancy)) {
+      t->addQuad(uSide0, vSideHalf, uSide1, vSide1, northMidR, northMidL, northC10, northC00,
+                 wx + 1.0f, wy + 0.5f, wz, wx, wy + 0.5f, wz,
+                 wx + 1.0f, wy, wz, wx, wy, wz);
+      drawn = true;
+    }
+
+    // South face (rear): full height
+    if (needFace(lx, ly, lz, cx, cz, id, 0, 0, 1, isFancy)) {
+      t->addQuad(uSide0, vSide0, uSide1, vSide1, southC01, southC11, southC00, southC10,
+                 wx, wy + 1.0f, wz + 1.0f, wx + 1.0f, wy + 1.0f, wz + 1.0f,
+                 wx, wy, wz + 1.0f, wx + 1.0f, wy, wz + 1.0f);
+      drawn = true;
+    }
+
+    // West face lower
+    if (needFace(lx, ly, lz, cx, cz, id, -1, 0, 0, isFancy)) {
+      t->addQuad(uSide0, vSideHalf, uSide1, vSide1, westMidZ0, westMidZ1, westC00, westC10,
+                 wx, wy + 0.5f, wz, wx, wy + 0.5f, wz + 1.0f,
+                 wx, wy, wz, wx, wy, wz + 1.0f);
+      // West face upper rear half
+      t->addQuad(uSideHalf, vSide0, uSide1, vSideHalf, westC01, westC11, westMidZ0, westMidZ1,
+                 wx, wy + 1.0f, wz + 0.5f, wx, wy + 1.0f, wz + 1.0f,
+                 wx, wy + 0.5f, wz + 0.5f, wx, wy + 0.5f, wz + 1.0f);
+      drawn = true;
+    }
+
+    // East face lower
+    if (needFace(lx, ly, lz, cx, cz, id, 1, 0, 0, isFancy)) {
+      t->addQuad(uSide0, vSideHalf, uSide1, vSide1, eastMidZ1, eastMidZ0, eastC10, eastC00,
+                 wx + 1.0f, wy + 0.5f, wz + 1.0f, wx + 1.0f, wy + 0.5f, wz,
+                 wx + 1.0f, wy, wz + 1.0f, wx + 1.0f, wy, wz);
+      // East face upper rear half
+      t->addQuad(uSideHalf, vSide0, uSide1, vSideHalf, eastC11, eastC01, eastMidZ1, eastMidZ0,
+                 wx + 1.0f, wy + 1.0f, wz + 1.0f, wx + 1.0f, wy + 1.0f, wz + 0.5f,
+                 wx + 1.0f, wy + 0.5f, wz + 1.0f, wx + 1.0f, wy + 0.5f, wz + 0.5f);
+      drawn = true;
+    }
+
+    // Internal riser at z = 0.5
+    t->addQuad(uSide0, vSide0, uSide1, vSideHalf, northC11, northC01, northMidR, northMidL,
+               wx + 1.0f, wy + 1.0f, wz + 0.5f, wx, wy + 1.0f, wz + 0.5f,
+               wx + 1.0f, wy + 0.5f, wz + 0.5f, wx, wy + 0.5f, wz + 0.5f);
+    drawn = true;
+
     return drawn;
   }
 
