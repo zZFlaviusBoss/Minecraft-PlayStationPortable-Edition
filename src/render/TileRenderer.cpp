@@ -21,11 +21,6 @@ static inline bool isSlabBlock(uint8_t id) {
          id == BLOCK_SANDSTONE_SLAB_TOP || id == BLOCK_BRICK_SLAB_TOP || id == BLOCK_STONE_BRICK_SLAB_TOP;
 }
 
-static inline bool isStairBlock(uint8_t id) {
-  return id == BLOCK_STONE_STAIR || id == BLOCK_WOOD_STAIR || id == BLOCK_COBBLE_STAIR ||
-         id == BLOCK_SANDSTONE_STAIR || id == BLOCK_BRICK_STAIR || id == BLOCK_STONE_BRICK_STAIR;
-}
-
 TileRenderer::TileRenderer(Level *level, Tesselator *opaqueTess, Tesselator *transTess,
                            Tesselator *fancyTess, Tesselator *emitTess)
     : m_level(level), m_opaqueTess(opaqueTess), m_transTess(transTess),
@@ -160,7 +155,7 @@ bool TileRenderer::needFace(int lx, int ly, int lz, int cx, int cz, uint8_t id, 
   if (g_blockProps[nb].isOpaque()) {
     // Stairs are partial geometry and should never fully occlude a neighboring
     // block face like a full cube does.
-    if (isStairBlock(id) || isStairBlock(nb)) {
+    if (isStairId(id) || isStairId(nb)) {
       return true;
     }
     if (dy == 1 || dy == -1) {
@@ -199,7 +194,7 @@ bool TileRenderer::needFace(int lx, int ly, int lz, int cx, int cz, uint8_t id, 
   if (bp.isLiquid() && g_blockProps[nb].isLiquid())
     return false;
 
-  if (nb == id && bp.isTransparent() && !isStairBlock(id))
+  if (nb == id && bp.isTransparent() && !isStairId(id))
     return false;
 
   return true;
@@ -523,8 +518,11 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
     return drawn;
   }
 
-  if (isStairBlock(id)) {
-    const BlockUV &uv = g_blockUV[id];
+  if (isStairId(id)) {
+    int facing = stairFacing(id);
+    bool upsideDown = isUpsideDownStair(id);
+    uint8_t baseId = stairBaseId(id);
+    const BlockUV &uv = g_blockUV[baseId];
     float wx = (float)(cx * CHUNK_SIZE_X + lx);
     float wy = (float)ly;
     float wz = (float)(cz * CHUNK_SIZE_Z + lz);
@@ -553,6 +551,36 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
     const float vBot1 = (uv.bot_y + 1) * ts - eps;
 
     Tesselator *t = m_opaqueTess;
+    auto rotateLocal = [&](float &x, float &z) {
+      float lx0 = x - wx;
+      float lz0 = z - wz;
+      float rx = lx0, rz = lz0;
+      if (facing == 1) { rx = 1.0f - lz0; rz = lx0; }
+      else if (facing == 2) { rx = 1.0f - lx0; rz = 1.0f - lz0; }
+      else if (facing == 3) { rx = lz0; rz = 1.0f - lx0; }
+      x = wx + rx;
+      z = wz + rz;
+    };
+    auto addQuadRot = [&](float u0, float v0, float u1, float v1, uint32_t c00, uint32_t c10, uint32_t c01, uint32_t c11,
+                          float x00, float y00, float z00, float x10, float y10, float z10,
+                          float x01, float y01, float z01, float x11, float y11, float z11) {
+      if (upsideDown) {
+        y00 = wy + 1.0f - (y00 - wy);
+        y10 = wy + 1.0f - (y10 - wy);
+        y01 = wy + 1.0f - (y01 - wy);
+        y11 = wy + 1.0f - (y11 - wy);
+      }
+      rotateLocal(x00, z00); rotateLocal(x10, z10); rotateLocal(x01, z01); rotateLocal(x11, z11);
+      t->addQuad(u0, v0, u1, v1, c00, c10, c01, c11, x00, y00, z00, x10, y10, z10, x01, y01, z01, x11, y11, z11);
+    };
+    auto stairNeedFace = [&](int dx, int dy, int dz) -> bool {
+      int ndx = dx, ndz = dz;
+      int ndy = upsideDown ? -dy : dy;
+      if (facing == 1) { ndx = -dz; ndz = dx; }
+      else if (facing == 2) { ndx = -dx; ndz = -dz; }
+      else if (facing == 3) { ndx = dz; ndz = -dx; }
+      return needFace(lx, ly, lz, cx, cz, id, ndx, ndy, ndz, isFancy);
+    };
 
     // Per-vertex face colors (same sampling style as full blocks) to avoid
     // flat-looking stair lighting.
@@ -599,71 +627,71 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
     uint32_t northMidL = lerpColor(northC00, northC01, 0.5f);
 
     // Top of lower step (front half, y = 0.5, z:0..0.5)
-    if (needFace(lx, ly, lz, cx, cz, id, 0, 1, 0, isFancy)) {
-      t->addQuad(uTop0, vTop0, uTop1, vTopHalf, topC00, topC10, topC01, topC11,
+    if (stairNeedFace(0, 1, 0)) {
+      addQuadRot(uTop0, vTop0, uTop1, vTopHalf, topC00, topC10, topC01, topC11,
                  wx, wy + 0.5f, wz, wx + 1.0f, wy + 0.5f, wz,
                  wx, wy + 0.5f, wz + 0.5f, wx + 1.0f, wy + 0.5f, wz + 0.5f);
       drawn = true;
     }
 
     // Top of upper step (rear half, z:0.5..1.0, y = 1.0)
-    if (needFace(lx, ly, lz, cx, cz, id, 0, 1, 0, isFancy)) {
-      t->addQuad(uTop0, vTopHalf, uTop1, vTop1, topC00, topC10, topC01, topC11,
+    if (stairNeedFace(0, 1, 0)) {
+      addQuadRot(uTop0, vTopHalf, uTop1, vTop1, topC00, topC10, topC01, topC11,
                  wx, wy + 1.0f, wz + 0.5f, wx + 1.0f, wy + 1.0f, wz + 0.5f,
                  wx, wy + 1.0f, wz + 1.0f, wx + 1.0f, wy + 1.0f, wz + 1.0f);
       drawn = true;
     }
 
     // Bottom
-    if (needFace(lx, ly, lz, cx, cz, id, 0, -1, 0, isFancy)) {
-      t->addQuad(uBot0, vBot0, uBot1, vBot1, botC01, botC11, botC00, botC10,
+    if (stairNeedFace(0, -1, 0)) {
+      addQuadRot(uBot0, vBot0, uBot1, vBot1, botC01, botC11, botC00, botC10,
                  wx, wy, wz + 1.0f, wx + 1.0f, wy, wz + 1.0f,
                  wx, wy, wz, wx + 1.0f, wy, wz);
       drawn = true;
     }
 
     // North face (front): half height
-    if (needFace(lx, ly, lz, cx, cz, id, 0, 0, -1, isFancy)) {
-      t->addQuad(uSide0, vSideHalf, uSide1, vSide1, northMidR, northMidL, northC10, northC00,
+    if (stairNeedFace(0, 0, -1)) {
+      addQuadRot(uSide0, vSideHalf, uSide1, vSide1, northMidR, northMidL, northC10, northC00,
                  wx + 1.0f, wy + 0.5f, wz, wx, wy + 0.5f, wz,
                  wx + 1.0f, wy, wz, wx, wy, wz);
       drawn = true;
     }
 
     // South face (rear): full height
-    if (needFace(lx, ly, lz, cx, cz, id, 0, 0, 1, isFancy)) {
-      t->addQuad(uSide0, vSide0, uSide1, vSide1, southC01, southC11, southC00, southC10,
+    if (stairNeedFace(0, 0, 1)) {
+      addQuadRot(uSide0, vSide0, uSide1, vSide1, southC01, southC11, southC00, southC10,
                  wx, wy + 1.0f, wz + 1.0f, wx + 1.0f, wy + 1.0f, wz + 1.0f,
                  wx, wy, wz + 1.0f, wx + 1.0f, wy, wz + 1.0f);
       drawn = true;
     }
 
     // West face lower
-    if (needFace(lx, ly, lz, cx, cz, id, -1, 0, 0, isFancy)) {
-      t->addQuad(uSide0, vSideHalf, uSide1, vSide1, westMidZ0, westMidZ1, westC00, westC10,
+    if (stairNeedFace(-1, 0, 0)) {
+      addQuadRot(uSide0, vSideHalf, uSide1, vSide1, westMidZ0, westMidZ1, westC00, westC10,
                  wx, wy + 0.5f, wz, wx, wy + 0.5f, wz + 1.0f,
                  wx, wy, wz, wx, wy, wz + 1.0f);
       // West face upper rear half
-      t->addQuad(uSideHalf, vSide0, uSide1, vSideHalf, westC01, westC11, westMidZ0, westMidZ1,
+      addQuadRot(uSideHalf, vSide0, uSide1, vSideHalf, westC01, westC11, westMidZ0, westMidZ1,
                  wx, wy + 1.0f, wz + 0.5f, wx, wy + 1.0f, wz + 1.0f,
                  wx, wy + 0.5f, wz + 0.5f, wx, wy + 0.5f, wz + 1.0f);
       drawn = true;
     }
 
     // East face lower
-    if (needFace(lx, ly, lz, cx, cz, id, 1, 0, 0, isFancy)) {
-      t->addQuad(uSide0, vSideHalf, uSide1, vSide1, eastMidZ1, eastMidZ0, eastC10, eastC00,
+    if (stairNeedFace(1, 0, 0)) {
+      addQuadRot(uSide0, vSideHalf, uSide1, vSide1, eastMidZ1, eastMidZ0, eastC10, eastC00,
                  wx + 1.0f, wy + 0.5f, wz + 1.0f, wx + 1.0f, wy + 0.5f, wz,
                  wx + 1.0f, wy, wz + 1.0f, wx + 1.0f, wy, wz);
       // East face upper rear half
-      t->addQuad(uSideHalf, vSide0, uSide1, vSideHalf, eastC11, eastC01, eastMidZ1, eastMidZ0,
+      addQuadRot(uSideHalf, vSide0, uSide1, vSideHalf, eastC11, eastC01, eastMidZ1, eastMidZ0,
                  wx + 1.0f, wy + 1.0f, wz + 1.0f, wx + 1.0f, wy + 1.0f, wz + 0.5f,
                  wx + 1.0f, wy + 0.5f, wz + 1.0f, wx + 1.0f, wy + 0.5f, wz + 0.5f);
       drawn = true;
     }
 
     // Internal riser at z = 0.5
-    t->addQuad(uSide0, vSide0, uSide1, vSideHalf, northC11, northC01, northMidR, northMidL,
+    addQuadRot(uSide0, vSide0, uSide1, vSideHalf, northC11, northC01, northMidR, northMidL,
                wx + 1.0f, wy + 1.0f, wz + 0.5f, wx, wy + 1.0f, wz + 0.5f,
                wx + 1.0f, wy + 0.5f, wz + 0.5f, wx, wy + 0.5f, wz + 0.5f);
     drawn = true;

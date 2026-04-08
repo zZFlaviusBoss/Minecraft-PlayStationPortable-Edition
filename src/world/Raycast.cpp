@@ -88,11 +88,6 @@ RayHit raycast(Level *level, float ox, float oy, float oz,
                        outFace, outT);
   };
 
-  auto isStairBlock = [](uint8_t id) {
-    return id == BLOCK_STONE_STAIR || id == BLOCK_WOOD_STAIR || id == BLOCK_COBBLE_STAIR ||
-           id == BLOCK_SANDSTONE_STAIR || id == BLOCK_BRICK_STAIR || id == BLOCK_STONE_BRICK_STAIR;
-  };
-
   // Step through grid
   for (int i = 0; i < 200 && dist < maxDist; i++) {
     // Check current block
@@ -102,21 +97,35 @@ RayHit raycast(Level *level, float ox, float oy, float oz,
       bool customBounds =
           (bp.minX > 0.0f || bp.minY > 0.0f || bp.minZ > 0.0f ||
            bp.maxX < 1.0f || bp.maxY < 1.0f || bp.maxZ < 1.0f);
-      if (isStairBlock(id)) customBounds = true;
+      if (isStairId(id)) customBounds = true;
 
       int hitFace = lastFace;
       float hitT = dist;
       bool hitThisVoxel = true;
-      if (customBounds && isStairBlock(id)) {
+      if (customBounds && isStairId(id)) {
         int faceL = lastFace; float tL = dist;
+        bool upsideDown = isUpsideDownStair(id);
+        float lMinY = upsideDown ? (float)mapY + 0.5f : (float)mapY;
+        float lMaxY = upsideDown ? (float)mapY + 1.0f : (float)mapY + 0.5f;
         bool hitL = rayHitsAABB((float)mapX, (float)mapX + 1.0f,
-                                (float)mapY, (float)mapY + 0.5f,
+                                lMinY, lMaxY,
                                 (float)mapZ, (float)mapZ + 1.0f,
                                 faceL, tL);
         int faceU = lastFace; float tU = dist;
-        bool hitU = rayHitsAABB((float)mapX, (float)mapX + 1.0f,
-                                (float)mapY + 0.5f, (float)mapY + 1.0f,
-                                (float)mapZ + 0.5f, (float)mapZ + 1.0f,
+        int facing = stairFacing(id);
+        float uMinX = (float)mapX;
+        float uMaxX = (float)mapX + 1.0f;
+        float uMinZ = (float)mapZ;
+        float uMaxZ = (float)mapZ + 1.0f;
+        if (facing == 0) uMinZ = (float)mapZ + 0.5f;
+        else if (facing == 1) uMaxX = (float)mapX + 0.5f;
+        else if (facing == 2) uMaxZ = (float)mapZ + 0.5f;
+        else uMinX = (float)mapX + 0.5f;
+        float uMinY = upsideDown ? (float)mapY : (float)mapY + 0.5f;
+        float uMaxY = upsideDown ? (float)mapY + 0.5f : (float)mapY + 1.0f;
+        bool hitU = rayHitsAABB(uMinX, uMaxX,
+                                uMinY, uMaxY,
+                                uMinZ, uMaxZ,
                                 faceU, tU);
 
         if (!hitL && !hitU) {

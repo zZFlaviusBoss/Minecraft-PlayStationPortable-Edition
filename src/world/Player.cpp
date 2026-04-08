@@ -484,6 +484,26 @@ void Player::updateInteraction(float dt) {
             }
         }
 
+        if (isStairId(blockToPlace)) {
+            float yawRad = yaw * Mth::DEGRAD;
+            float dirX = Mth::sin(yawRad);
+            float dirZ = Mth::cos(yawRad);
+            bool upsideDown = false;
+            if (hitResult.face == 0) {
+                upsideDown = true;
+            } else if (hitResult.face >= 2 && hitResult.face <= 5) {
+                upsideDown = (hitResult.hitYLocal >= 0.5f);
+            }
+            int lookDir;
+            if (fabsf(dirX) > fabsf(dirZ)) {
+                lookDir = (dirX >= 0.0f) ? 1 : 3; // east/west
+            } else {
+                lookDir = (dirZ >= 0.0f) ? 2 : 0; // south/north
+            }
+            int frontDir = (lookDir + 2) & 3; // face player
+            blockToPlace = toOrientedStairId(stairBaseId(blockToPlace), frontDir, upsideDown);
+        }
+
         if (canPlace && !overlaps && canReplaceTarget) {
             level->setBlock(px, py, pz, blockToPlace);
             

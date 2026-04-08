@@ -262,4 +262,27 @@ void Blocks_Init() {
   // Lava (from provided atlas map): row15,col14 => x=13,y=14
   DEF_UV(BLOCK_LAVA_STILL, 13, 14, 13, 14, 13, 14);
   DEF_UV(BLOCK_LAVA_FLOW, 13, 14, 13, 14, 13, 14);
+
+  // Stair orientation variants reuse the base stair material/props.
+  const uint8_t stairBases[] = {
+    BLOCK_WOOD_STAIR, BLOCK_COBBLE_STAIR, BLOCK_STONE_STAIR,
+    BLOCK_SANDSTONE_STAIR, BLOCK_BRICK_STAIR, BLOCK_STONE_BRICK_STAIR
+  };
+  for (int i = 0; i < 6; ++i) {
+    uint8_t base = stairBases[i];
+    g_blockProps[toOrientedStairId(base, 1)] = g_blockProps[base];
+    g_blockProps[toOrientedStairId(base, 2)] = g_blockProps[base];
+    g_blockProps[toOrientedStairId(base, 3)] = g_blockProps[base];
+    g_blockProps[toOrientedStairId(base, 0, true)] = g_blockProps[base];
+    g_blockProps[toOrientedStairId(base, 1, true)] = g_blockProps[base];
+    g_blockProps[toOrientedStairId(base, 2, true)] = g_blockProps[base];
+    g_blockProps[toOrientedStairId(base, 3, true)] = g_blockProps[base];
+    g_blockUV[toOrientedStairId(base, 1)] = g_blockUV[base];
+    g_blockUV[toOrientedStairId(base, 2)] = g_blockUV[base];
+    g_blockUV[toOrientedStairId(base, 3)] = g_blockUV[base];
+    g_blockUV[toOrientedStairId(base, 0, true)] = g_blockUV[base];
+    g_blockUV[toOrientedStairId(base, 1, true)] = g_blockUV[base];
+    g_blockUV[toOrientedStairId(base, 2, true)] = g_blockUV[base];
+    g_blockUV[toOrientedStairId(base, 3, true)] = g_blockUV[base];
+  }
 }
