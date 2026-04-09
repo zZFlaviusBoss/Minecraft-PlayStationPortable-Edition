@@ -18,14 +18,17 @@ struct Chunk {
   CraftPSPVertex *opaqueVertices[4];    // Sky-lit faces – dimmed via sceGuAmbient(sunBrightness)
   CraftPSPVertex *transVertices[4];     // Transparent (outer leaves, glass)
   CraftPSPVertex *transFancyVertices[4];// Fancy inner leaves
+  CraftPSPVertex *waterVertices[4];     // Water blend pass (culling enabled)
   CraftPSPVertex *emitVertices[4];      // Block-lit (torch) faces – always full brightness
   int opaqueTriCount[4];
   int transTriCount[4];
   int transFancyTriCount[4];
+  int waterTriCount[4];
   int emitTriCount[4];
   int opaqueCapacity[4];
   int transCapacity[4];
   int transFancyCapacity[4];
+  int waterCapacity[4];
   int emitCapacity[4];
   bool dirty[4]; // Track dirty state per Sub-Chunk
   uint8_t priority[4]; // Determines async queue priority. High = compile first

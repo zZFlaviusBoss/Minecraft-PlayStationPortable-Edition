@@ -15,6 +15,7 @@
 static CraftPSPVertex g_opaqueBuf[4][MAX_VERTS_PER_SUB_CHUNK];
 static CraftPSPVertex g_transBuf[4][MAX_VERTS_PER_SUB_CHUNK];
 static CraftPSPVertex g_transFancyBuf[4][MAX_VERTS_PER_SUB_CHUNK];
+static CraftPSPVertex g_waterBuf[4][MAX_VERTS_PER_SUB_CHUNK];
 static CraftPSPVertex g_emitBuf[4][MAX_VERTS_PER_SUB_CHUNK];
 
 ChunkRenderer::ChunkRenderer(TextureAtlas *atlas)
@@ -85,6 +86,7 @@ void ChunkRenderer::processCompileQueue(float camX, float camY, float camZ) {
       m_opaqueTess.begin(g_opaqueBuf[m_compileSy], MAX_VERTS_PER_SUB_CHUNK);
       m_transTess.begin(g_transBuf[m_compileSy], MAX_VERTS_PER_SUB_CHUNK);
       m_transFancyTess.begin(g_transFancyBuf[m_compileSy], MAX_VERTS_PER_SUB_CHUNK);
+      m_waterTess.begin(g_waterBuf[m_compileSy], MAX_VERTS_PER_SUB_CHUNK);
       m_emitTess.begin(g_emitBuf[m_compileSy], MAX_VERTS_PER_SUB_CHUNK);
     }
   }
@@ -94,7 +96,7 @@ void ChunkRenderer::processCompileQueue(float camX, float camY, float camZ) {
     int yStart = m_compileSy * 16;
     int yEnd = yStart + 16;
 
-    TileRenderer tileRenderer(m_level, &m_opaqueTess, &m_transTess, &m_transFancyTess, &m_emitTess);
+    TileRenderer tileRenderer(m_level, &m_opaqueTess, &m_transTess, &m_transFancyTess, &m_waterTess, &m_emitTess);
     for (int lx = 0; lx < CHUNK_SIZE_X; lx++) {
       for (int lz = 0; lz < CHUNK_SIZE_Z; lz++) {
         for (int ly = yStart; ly < yEnd; ly++) {
@@ -121,6 +123,7 @@ void ChunkRenderer::processCompileQueue(float camX, float camY, float camZ) {
     c->opaqueTriCount[sy] = m_opaqueTess.end();
     c->transTriCount[sy] = m_transTess.end();
     c->transFancyTriCount[sy] = m_transFancyTess.end();
+    c->waterTriCount[sy] = m_waterTess.end();
 
     // Opaque Buffer
     if (c->opaqueTriCount[sy] > 0) {
@@ -170,6 +173,22 @@ void ChunkRenderer::processCompileQueue(float camX, float camY, float camZ) {
       }
     }
 
+    // Water Buffer
+    if (c->waterTriCount[sy] > 0) {
+      if (c->waterTriCount[sy] > c->waterCapacity[sy]) {
+        if (c->waterVertices[sy]) free(c->waterVertices[sy]);
+        c->waterCapacity[sy] = c->waterTriCount[sy] + (c->waterTriCount[sy] >> 1) + 128;
+        c->waterVertices[sy] = (CraftPSPVertex *)memalign(16, c->waterCapacity[sy] * sizeof(CraftPSPVertex));
+      }
+      if (c->waterVertices[sy]) {
+        memcpy(c->waterVertices[sy], g_waterBuf[sy], c->waterTriCount[sy] * sizeof(CraftPSPVertex));
+        sceKernelDcacheWritebackInvalidateRange(c->waterVertices[sy], c->waterTriCount[sy] * sizeof(CraftPSPVertex));
+      } else {
+        c->waterTriCount[sy] = 0;
+        c->waterCapacity[sy] = 0;
+      }
+    }
+
     // Emit buffer
     c->emitTriCount[sy] = m_emitTess.end();
     if (c->emitTriCount[sy] > 0) {
@@ -201,13 +220,14 @@ void ChunkRenderer::processCompileQueue(float camX, float camY, float camZ) {
 
 // Finish tessellation and upload vertex data
 static void flushSubChunk(Chunk *c, int sy,
-                          Tesselator &opT, Tesselator &trT, Tesselator &tfT, Tesselator &emT) {
+                          Tesselator &opT, Tesselator &trT, Tesselator &tfT, Tesselator &waT, Tesselator &emT) {
   c->dirty[sy] = false;
   c->priority[sy] = 0;
 
   c->opaqueTriCount[sy] = opT.end();
   c->transTriCount[sy]  = trT.end();
   c->transFancyTriCount[sy] = tfT.end();
+  c->waterTriCount[sy]  = waT.end();
   c->emitTriCount[sy]   = emT.end();
 
   auto upload = [](CraftPSPVertex *&buf, int &count, int &cap, CraftPSPVertex *src) {
@@ -227,6 +247,7 @@ static void flushSubChunk(Chunk *c, int sy,
   upload(c->opaqueVertices[sy],    c->opaqueTriCount[sy],    c->opaqueCapacity[sy],    g_opaqueBuf[sy]);
   upload(c->transVertices[sy],     c->transTriCount[sy],     c->transCapacity[sy],     g_transBuf[sy]);
   upload(c->transFancyVertices[sy],c->transFancyTriCount[sy],c->transFancyCapacity[sy],g_transFancyBuf[sy]);
+  upload(c->waterVertices[sy],     c->waterTriCount[sy],     c->waterCapacity[sy],     g_waterBuf[sy]);
   upload(c->emitVertices[sy],      c->emitTriCount[sy],      c->emitCapacity[sy],      g_emitBuf[sy]);
 }
 
@@ -239,9 +260,10 @@ void ChunkRenderer::rebuildChunkNow(int cx, int cz, int sy) {
   m_opaqueTess.begin(g_opaqueBuf[sy], MAX_VERTS_PER_SUB_CHUNK);
   m_transTess.begin(g_transBuf[sy], MAX_VERTS_PER_SUB_CHUNK);
   m_transFancyTess.begin(g_transFancyBuf[sy], MAX_VERTS_PER_SUB_CHUNK);
+  m_waterTess.begin(g_waterBuf[sy], MAX_VERTS_PER_SUB_CHUNK);
   m_emitTess.begin(g_emitBuf[sy], MAX_VERTS_PER_SUB_CHUNK);
 
-  TileRenderer tileRenderer(m_level, &m_opaqueTess, &m_transTess, &m_transFancyTess, &m_emitTess);
+  TileRenderer tileRenderer(m_level, &m_opaqueTess, &m_transTess, &m_transFancyTess, &m_waterTess, &m_emitTess);
   int yStart = sy * 16;
   int yEnd   = yStart + 16;
   for (int lx = 0; lx < CHUNK_SIZE_X; lx++) {
@@ -256,7 +278,7 @@ void ChunkRenderer::rebuildChunkNow(int cx, int cz, int sy) {
     }
   }
 
-  flushSubChunk(c, sy, m_opaqueTess, m_transTess, m_transFancyTess, m_emitTess);
+  flushSubChunk(c, sy, m_opaqueTess, m_transTess, m_transFancyTess, m_waterTess, m_emitTess);
 }
 
 void ChunkRenderer::render(float camX, float camY, float camZ) {
@@ -291,8 +313,8 @@ void ChunkRenderer::renderOpaque(float camX, float camY, float camZ) {
         continue;
 
       for (int sy = 0; sy < 4; sy++) {
-        if ((c->opaqueTriCount[sy] == 0 && c->transTriCount[sy] == 0 && c->transFancyTriCount[sy] == 0) ||
-            (!c->opaqueVertices[sy] && !c->transVertices[sy] && !c->transFancyVertices[sy]))
+        if ((c->opaqueTriCount[sy] == 0 && c->transTriCount[sy] == 0 && c->transFancyTriCount[sy] == 0 && c->waterTriCount[sy] == 0) ||
+            (!c->opaqueVertices[sy] && !c->transVertices[sy] && !c->transFancyVertices[sy] && !c->waterVertices[sy]))
           continue;
 
         float chunkCenterX = c->cx * CHUNK_SIZE_X + CHUNK_SIZE_X / 2.0f;
@@ -392,6 +414,8 @@ void ChunkRenderer::renderTransparent() {
   sceGuEnable(GU_BLEND);
   sceGuDisable(GU_CULL_FACE); // Allow plants/water to be seen from both sides
 
+  // MCPE-like: leaves/cutout-fancy pass should be alpha-tested, not alpha-blended.
+  sceGuDisable(GU_BLEND);
   for (int i = m_visibleCount - 1; i >= 0; i--) {
     Chunk *c = m_visibleChunks[i].chunk;
     int sy = m_visibleChunks[i].subChunkIdx;
@@ -405,6 +429,7 @@ void ChunkRenderer::renderTransparent() {
   }
 
   // Draw transparent chunks (Back-to-Front)
+  sceGuEnable(GU_BLEND);
   for (int i = m_visibleCount - 1; i >= 0; i--) {
     Chunk *c = m_visibleChunks[i].chunk;
     int sy = m_visibleChunks[i].subChunkIdx;
@@ -413,6 +438,19 @@ void ChunkRenderer::renderTransparent() {
     sceGumDrawArray(GU_TRIANGLES,
                     GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_3D,
                     c->transTriCount[sy], nullptr, c->transVertices[sy]);
+  }
+
+  // Draw water chunks separately with culling enabled to avoid visible inner
+  // backfaces/sheets inside waterfalls and around foliage intersections.
+  sceGuEnable(GU_CULL_FACE);
+  for (int i = m_visibleCount - 1; i >= 0; i--) {
+    Chunk *c = m_visibleChunks[i].chunk;
+    int sy = m_visibleChunks[i].subChunkIdx;
+    if (c->waterTriCount[sy] == 0 || !c->waterVertices[sy]) continue;
+    setChunkMatrix(c);
+    sceGumDrawArray(GU_TRIANGLES,
+                    GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_3D,
+                    c->waterTriCount[sy], nullptr, c->waterVertices[sy]);
   }
 
   // Draw emissive chunks last so transparent/cutout geometry (leaves/ice/glass/plants)

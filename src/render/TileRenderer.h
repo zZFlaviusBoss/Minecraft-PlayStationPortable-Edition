@@ -8,7 +8,7 @@ public:
   // emitTess: receives block-lit (torch) faces drawn at full brightness at night
   // opaqueTess: receives sky-lit faces dimmed at night via sceGuAmbient(sunBrightness)
   TileRenderer(Level *level, Tesselator *opaqueTess, Tesselator *transTess,
-               Tesselator *fancyTess, Tesselator *emitTess);
+               Tesselator *fancyTess, Tesselator *waterTess, Tesselator *emitTess);
   ~TileRenderer();
 
   bool tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int cx, int cz);
@@ -18,6 +18,7 @@ private:
   Tesselator *m_opaqueTess;
   Tesselator *m_transTess;
   Tesselator *m_fancyTess;
+  Tesselator *m_waterTess;
   Tesselator *m_emitTess;   // Block-lit (torch) faces
 
   float getSkyLightRaw(int lx, int ly, int lz, int cx, int cz, int dx, int dy, int dz);

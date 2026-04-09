@@ -9,14 +9,17 @@ Chunk::Chunk() : cx(0), cz(0) {
     opaqueVertices[i] = nullptr;
     transVertices[i] = nullptr;
     transFancyVertices[i] = nullptr;
+    waterVertices[i] = nullptr;
     emitVertices[i] = nullptr;
     opaqueTriCount[i] = 0;
     transTriCount[i] = 0;
     transFancyTriCount[i] = 0;
+    waterTriCount[i] = 0;
     emitTriCount[i] = 0;
     opaqueCapacity[i] = 0;
     transCapacity[i] = 0;
     transFancyCapacity[i] = 0;
+    waterCapacity[i] = 0;
     emitCapacity[i] = 0;
     priority[i] = 0;
   }
@@ -29,6 +32,7 @@ Chunk::~Chunk() {
     if (opaqueVertices[i]) { free(opaqueVertices[i]); opaqueVertices[i] = nullptr; }
     if (transVertices[i]) { free(transVertices[i]); transVertices[i] = nullptr; }
     if (transFancyVertices[i]) { free(transFancyVertices[i]); transFancyVertices[i] = nullptr; }
+    if (waterVertices[i]) { free(waterVertices[i]); waterVertices[i] = nullptr; }
     if (emitVertices[i]) { free(emitVertices[i]); emitVertices[i] = nullptr; }
   }
 }
