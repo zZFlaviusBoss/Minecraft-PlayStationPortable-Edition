@@ -10,6 +10,7 @@ struct RayHit {
   int face;       // face normal: 0=Y- 1=Y+ 2=Z- 3=Z+ 4=X- 5=X+
   int nx, ny, nz; // adjacent block on the hit face (for placement)
   uint8_t id;     // ID of the hit block
+  float hitYLocal; // local Y hit coordinate inside hit block [0..1]
 };
 
 // Cast a ray from (ox,oy,oz) in direction (dx,dy,dz) up to maxDist blocks.

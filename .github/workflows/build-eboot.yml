@@ -1,0 +1,82 @@
+name: Build PSP EBOOT
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Pull PSP toolchain image
+        run: docker pull pspdev/pspdev:latest
+
+      - name: Verify PSP SDK in container
+        run: |
+          docker run --rm pspdev/pspdev:latest bash -lc '
+            set -e
+            for d in "${PSPDEV:-}" /usr/local/pspdev /opt/pspdev /pspdev; do
+              [ -n "$d" ] || continue
+              if [ -x "$d/bin/psp-gcc" ]; then
+                PSPDEV="$d"
+                break
+              fi
+            done
+            if [ -z "${PSPDEV:-}" ] && command -v psp-gcc >/dev/null 2>&1; then
+              PSPDEV="$(cd "$(dirname "$(command -v psp-gcc)")/.." && pwd)"
+            fi
+            [ -n "${PSPDEV:-}" ] || { echo "Unable to detect PSPDEV"; exit 1; }
+            PSPSDK="${PSPSDK:-$PSPDEV/psp/sdk}"
+            export PSPDEV PSPSDK PATH="$PSPDEV/bin:$PATH"
+            echo "PSPDEV=$PSPDEV"
+            echo "PSPSDK=$PSPSDK"
+            command -v psp-config || true
+            command -v psp-gcc || true
+            test -x "$PSPDEV/bin/psp-gcc"
+            test -d "$PSPSDK"
+          '
+
+      - name: Build in PSP container
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/work" \
+            -w /work \
+            pspdev/pspdev:latest \
+            bash -lc '
+              set -e
+              for d in "${PSPDEV:-}" /usr/local/pspdev /opt/pspdev /pspdev; do
+                [ -n "$d" ] || continue
+                if [ -x "$d/bin/psp-gcc" ]; then
+                  PSPDEV="$d"
+                  break
+                fi
+              done
+              if [ -z "${PSPDEV:-}" ] && command -v psp-gcc >/dev/null 2>&1; then
+                PSPDEV="$(cd "$(dirname "$(command -v psp-gcc)")/.." && pwd)"
+              fi
+              [ -n "${PSPDEV:-}" ] || { echo "Unable to detect PSPDEV"; exit 1; }
+              PSPSDK="${PSPSDK:-$PSPDEV/psp/sdk}"
+              export PSPDEV PSPSDK PATH="$PSPDEV/bin:$PATH"
+              echo "Using PSPDEV=$PSPDEV"
+              echo "Using PSPSDK=$PSPSDK"
+              make build JOBS="$(nproc)"
+            '
+
+      - name: Check output
+        run: |
+          test -f build/EBOOT.PBP
+          ls -lh build/EBOOT.PBP
+
+      - name: Upload EBOOT artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EBOOT.PBP
+          path: build/EBOOT.PBP
+          if-no-files-found: error

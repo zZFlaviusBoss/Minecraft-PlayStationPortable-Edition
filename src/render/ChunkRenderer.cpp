@@ -260,8 +260,14 @@ void ChunkRenderer::rebuildChunkNow(int cx, int cz, int sy) {
 }
 
 void ChunkRenderer::render(float camX, float camY, float camZ) {
+  renderOpaque(camX, camY, camZ);
+  renderTransparent();
+}
+
+void ChunkRenderer::renderOpaque(float camX, float camY, float camZ) {
   if (!m_level)
     return;
+  m_lastCamY = camY;
 
   m_atlas->bind();
 
@@ -271,23 +277,13 @@ void ChunkRenderer::render(float camX, float camY, float camZ) {
   frustum.update(vp);
 
   static const float RENDER_DISTANCE = 64.0f;
-  static const float FANCY_LOD_DIST = 32.0f; 
-
-
-
-  struct RenderChunk {
-    Chunk *chunk;
-    int subChunkIdx;
-    float distSq;
-    float distSqHoriz;
-  };
-  RenderChunk visibleChunks[WORLD_CHUNKS_X * WORLD_CHUNKS_Z * 4];
-  int visibleCount = 0;
 
   // Process compile queue
   processCompileQueue(camX, camY, camZ);
 
-  // Render loop
+  m_visibleCount = 0;
+
+  // Gather visible chunks/subchunks.
   for (int cx = 0; cx < WORLD_CHUNKS_X; cx++) {
     for (int cz = 0; cz < WORLD_CHUNKS_Z; cz++) {
       Chunk *c = m_level->getChunk(cx, cz);
@@ -306,8 +302,7 @@ void ChunkRenderer::render(float camX, float camY, float camZ) {
         float dx = chunkCenterX - camX;
         float dy = chunkCenterY - camY;
         float dz = chunkCenterZ - camZ;
-        
-        // Distance culling
+
         float maxDist = RENDER_DISTANCE + 11.5f;
         float distSqHoriz = dx * dx + dz * dz;
         if (distSqHoriz > maxDist * maxDist)
@@ -316,7 +311,6 @@ void ChunkRenderer::render(float camX, float camY, float camZ) {
         float distSq = dx * dx + dy * dy + dz * dz;
 
         AABB box;
-
         box.x0 = c->cx * CHUNK_SIZE_X - 4.0f;
         box.y0 = sy * 16 - 4.0f;
         box.z0 = c->cz * CHUNK_SIZE_Z - 4.0f;
@@ -324,36 +318,33 @@ void ChunkRenderer::render(float camX, float camY, float camZ) {
         box.y1 = sy * 16 + 16 + 4.0f;
         box.z1 = c->cz * CHUNK_SIZE_Z + CHUNK_SIZE_Z + 4.0f;
 
-        // 3D Cubic Frustum Culling
         if (frustum.testAABB(box) == Frustum::OUTSIDE)
           continue;
 
-        visibleChunks[visibleCount].chunk = c;
-        visibleChunks[visibleCount].subChunkIdx = sy;
-        visibleChunks[visibleCount].distSq = distSq;
-        visibleChunks[visibleCount].distSqHoriz = distSqHoriz;
-        visibleCount++;
+        m_visibleChunks[m_visibleCount].chunk = c;
+        m_visibleChunks[m_visibleCount].subChunkIdx = sy;
+        m_visibleChunks[m_visibleCount].distSq = distSq;
+        m_visibleChunks[m_visibleCount].distSqHoriz = distSqHoriz;
+        m_visibleCount++;
       }
     }
   }
 
-  // Sort visible chunks front-to-back
-  for (int i = 0; i < visibleCount - 1; i++) {
-    for (int j = 0; j < visibleCount - i - 1; j++) {
-      if (visibleChunks[j].distSq > visibleChunks[j + 1].distSq) {
-        RenderChunk temp = visibleChunks[j];
-        visibleChunks[j] = visibleChunks[j + 1];
-        visibleChunks[j + 1] = temp;
+  // Sort visible chunks front-to-back (used by opaque and emissive passes).
+  for (int i = 0; i < m_visibleCount - 1; i++) {
+    for (int j = 0; j < m_visibleCount - i - 1; j++) {
+      if (m_visibleChunks[j].distSq > m_visibleChunks[j + 1].distSq) {
+        VisibleChunk temp = m_visibleChunks[j];
+        m_visibleChunks[j] = m_visibleChunks[j + 1];
+        m_visibleChunks[j + 1] = temp;
       }
     }
   }
 
-  // Draw opaque chunks
   float sunBr = m_level->getSunBrightness();
   uint8_t sunByte = (uint8_t)(sunBr * 0.85f * 255.0f + 0.15f * 255.0f); // [0.15, 1.0]
   uint32_t sunAmbient = (0xFF000000u) | ((uint32_t)sunByte << 16) | ((uint32_t)sunByte << 8) | sunByte;
 
-  // Helper: set model matrix to identity (vertices are already in absolute world space)
   auto setChunkMatrix = [](Chunk *c) {
     sceGumMatrixMode(GU_MODEL);
     sceGumLoadIdentity();
@@ -365,9 +356,9 @@ void ChunkRenderer::render(float camX, float camY, float camZ) {
   sceGuEnable(GU_LIGHTING);
   sceGuAmbient(sunAmbient);
 
-  for (int i = 0; i < visibleCount; i++) {
-    Chunk *c = visibleChunks[i].chunk;
-    int sy = visibleChunks[i].subChunkIdx;
+  for (int i = 0; i < m_visibleCount; i++) {
+    Chunk *c = m_visibleChunks[i].chunk;
+    int sy = m_visibleChunks[i].subChunkIdx;
     if (c->opaqueTriCount[sy] == 0 || !c->opaqueVertices[sy]) continue;
     setChunkMatrix(c);
     sceGumDrawArray(GU_TRIANGLES,
@@ -375,19 +366,24 @@ void ChunkRenderer::render(float camX, float camY, float camZ) {
                     c->opaqueTriCount[sy], nullptr, c->opaqueVertices[sy]);
   }
 
-  // Draw emissive chunks
-  sceGuAmbient(0xFFFFFFFF);
-  for (int i = 0; i < visibleCount; i++) {
-    Chunk *c = visibleChunks[i].chunk;
-    int sy = visibleChunks[i].subChunkIdx;
-    if (c->emitTriCount[sy] == 0 || !c->emitVertices[sy]) continue;
-    setChunkMatrix(c);
-    sceGumDrawArray(GU_TRIANGLES,
-                    GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_3D,
-                    c->emitTriCount[sy], nullptr, c->emitVertices[sy]);
-  }
-
   sceGuDisable(GU_LIGHTING);
+}
+
+void ChunkRenderer::renderTransparent() {
+  if (!m_level)
+    return;
+
+  static const float FANCY_LOD_DIST = 32.0f;
+  float camY = m_lastCamY;
+  float sunBr = m_level->getSunBrightness();
+  uint8_t sunByte = (uint8_t)(sunBr * 0.85f * 255.0f + 0.15f * 255.0f); // [0.15, 1.0]
+  uint32_t sunAmbient = (0xFF000000u) | ((uint32_t)sunByte << 16) | ((uint32_t)sunByte << 8) | sunByte;
+
+  auto setChunkMatrix = [](Chunk *c) {
+    sceGumMatrixMode(GU_MODEL);
+    sceGumLoadIdentity();
+    sceGumUpdateMatrix();
+  };
 
   // Draw inner leaves (Back-to-Front check)
   sceGuEnable(GU_LIGHTING);
@@ -396,11 +392,11 @@ void ChunkRenderer::render(float camX, float camY, float camZ) {
   sceGuEnable(GU_BLEND);
   sceGuDisable(GU_CULL_FACE); // Allow plants/water to be seen from both sides
 
-  for (int i = visibleCount - 1; i >= 0; i--) {
-    Chunk *c = visibleChunks[i].chunk;
-    int sy = visibleChunks[i].subChunkIdx;
+  for (int i = m_visibleCount - 1; i >= 0; i--) {
+    Chunk *c = m_visibleChunks[i].chunk;
+    int sy = m_visibleChunks[i].subChunkIdx;
     if (c->transFancyTriCount[sy] == 0 || !c->transFancyVertices[sy]) continue;
-    float distSqHoriz = visibleChunks[i].distSqHoriz;
+    float distSqHoriz = m_visibleChunks[i].distSqHoriz;
     if (distSqHoriz > FANCY_LOD_DIST * FANCY_LOD_DIST || camY > 80.0f) continue;
     setChunkMatrix(c);
     sceGumDrawArray(GU_TRIANGLES,
@@ -409,15 +405,42 @@ void ChunkRenderer::render(float camX, float camY, float camZ) {
   }
 
   // Draw transparent chunks (Back-to-Front)
-  for (int i = visibleCount - 1; i >= 0; i--) {
-    Chunk *c = visibleChunks[i].chunk;
-    int sy = visibleChunks[i].subChunkIdx;
+  for (int i = m_visibleCount - 1; i >= 0; i--) {
+    Chunk *c = m_visibleChunks[i].chunk;
+    int sy = m_visibleChunks[i].subChunkIdx;
     if (c->transTriCount[sy] == 0 || !c->transVertices[sy]) continue;
     setChunkMatrix(c);
     sceGumDrawArray(GU_TRIANGLES,
                     GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_3D,
                     c->transTriCount[sy], nullptr, c->transVertices[sy]);
   }
+
+  // Draw emissive chunks last so transparent/cutout geometry (leaves/ice/glass/plants)
+  // also receives block-light overlay and does not stay dark at night.
+  sceGuDisable(GU_LIGHTING);
+  sceGuEnable(GU_BLEND);
+  sceGuDepthFunc(GU_GEQUAL);
+  sceGuDepthOffset(8);
+  uint8_t emitByte = (uint8_t)(160.0f + (1.0f - sunBr) * 95.0f);
+  uint32_t emitFix = ((uint32_t)emitByte << 24) | ((uint32_t)emitByte << 16) |
+                     ((uint32_t)emitByte << 8) | (uint32_t)emitByte;
+  sceGuBlendFunc(GU_ADD, GU_FIX, GU_FIX, emitFix, 0xFFFFFFFF);
+  sceGuDepthMask(GU_TRUE); // no depth writes
+  sceGuAmbient(0xFFFFFFFF);
+  for (int i = 0; i < m_visibleCount; i++) {
+    Chunk *c = m_visibleChunks[i].chunk;
+    int sy = m_visibleChunks[i].subChunkIdx;
+    if (c->emitTriCount[sy] == 0 || !c->emitVertices[sy]) continue;
+    setChunkMatrix(c);
+    sceGumDrawArray(GU_TRIANGLES,
+                    GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_3D,
+                    c->emitTriCount[sy], nullptr, c->emitVertices[sy]);
+  }
+  sceGuDepthMask(GU_FALSE);
+  sceGuDepthOffset(0);
+  sceGuDepthFunc(GU_GEQUAL);
+  sceGuBlendFunc(GU_ADD, GU_SRC_ALPHA, GU_ONE_MINUS_SRC_ALPHA, 0, 0);
+  sceGuDisable(GU_BLEND);
 
   sceGuEnable(GU_CULL_FACE); // Restore CULL_FACE
   sceGuDisable(GU_LIGHTING); // Restore default state

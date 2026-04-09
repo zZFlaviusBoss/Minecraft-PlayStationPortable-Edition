@@ -20,6 +20,8 @@ public:
 
   void setLevel(Level *level);
   void render(float camX, float camY, float camZ);
+  void renderOpaque(float camX, float camY, float camZ);
+  void renderTransparent();
   // Immediately compile a single subchunk (all 5 steps in one frame).
   // Use this for player-triggered block changes to avoid visible holes.
   void rebuildChunkNow(int cx, int cz, int sy);
@@ -34,6 +36,17 @@ private:
   Chunk *m_compileChunk;
   int m_compileSy;
   
+
+  struct VisibleChunk {
+    Chunk *chunk;
+    int subChunkIdx;
+    float distSq;
+    float distSqHoriz;
+  };
+  VisibleChunk m_visibleChunks[WORLD_CHUNKS_X * WORLD_CHUNKS_Z * 4];
+  int m_visibleCount = 0;
+  float m_lastCamY = 0.0f;
+
   Tesselator m_opaqueTess;
   Tesselator m_transTess;
   Tesselator m_transFancyTess;

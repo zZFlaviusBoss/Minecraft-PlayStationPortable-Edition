@@ -23,6 +23,13 @@ public:
                uint32_t c2, uint32_t c3, float x0, float y0, float z0, float x1,
                float y1, float z1, float x2, float y2, float z2, float x3,
                float y3, float z3);
+  // Same as addQuad, but emits triangles with reversed winding while keeping
+  // UV corner mapping intact.
+  void addQuadReversed(float u0, float v0, float u1, float v1, uint32_t c0,
+                       uint32_t c1, uint32_t c2, uint32_t c3, float x0,
+                       float y0, float z0, float x1, float y1, float z1,
+                       float x2, float y2, float z2, float x3, float y3,
+                       float z3);
 
   int end(); // returns vertex count
 
