@@ -22,9 +22,9 @@ static inline bool isSlabBlock(uint8_t id) {
 }
 
 TileRenderer::TileRenderer(Level *level, Tesselator *opaqueTess, Tesselator *transTess,
-                           Tesselator *fancyTess, Tesselator *emitTess)
+                           Tesselator *fancyTess, Tesselator *waterTess, Tesselator *emitTess)
     : m_level(level), m_opaqueTess(opaqueTess), m_transTess(transTess),
-      m_fancyTess(fancyTess), m_emitTess(emitTess) {}
+      m_fancyTess(fancyTess), m_waterTess(waterTess), m_emitTess(emitTess) {}
 
 TileRenderer::~TileRenderer() {}
 
@@ -323,6 +323,7 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
     int wX = cx * CHUNK_SIZE_X + lx;
     int wY = ly;
     int wZ = cz * CHUNK_SIZE_Z + lz;
+    float waterBlkCenter = getVertexBlockLight(wX, wY, wZ, 0, 0, 0, 0, 0, 0);
 
     const float ts = 1.0f / 16.0f;
     const float eps = 0.125f / 256.0f;
@@ -331,10 +332,29 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
       if (isWater) return b == BLOCK_WATER_STILL || b == BLOCK_WATER_FLOW;
       return b == BLOCK_LAVA_STILL || b == BLOCK_LAVA_FLOW;
     };
+    // MCPE-like liquid face rules (LiquidTile::shouldRenderFace):
+    // - never render against same liquid material
+    // - never render against ice
+    // - top face renders whenever not covered by same liquid
+    // - other faces render only when neighbor is not solid-rendering
+    auto liquidShouldRenderFace = [&](int dx, int dy, int dz, int face) -> bool {
+      int nx = wX + dx, ny = wY + dy, nz = wZ + dz;
+      if (ny < 0) return false;
+      if (nx < 0 || nx >= WORLD_CHUNKS_X * CHUNK_SIZE_X ||
+          nz < 0 || nz >= WORLD_CHUNKS_Z * CHUNK_SIZE_Z) {
+        return false;
+      }
+      if (ny >= CHUNK_SIZE_Y) return face == 1;
+      uint8_t nb = m_level->getBlock(nx, ny, nz);
+      if (isFluidId(nb)) return false;
+      if (nb == BLOCK_ICE) return false;
+      if (face == 1) return true;
+      return !g_blockProps[nb].isOpaque();
+    };
     const bool selfLitFluid = (g_blockProps[id].light_emit > 0);
     // Self-lit fluids (lava) go to opaque pass to avoid semi-transparent look.
     // Their night brightness is then reinforced by emissive overlay quads.
-    Tesselator *fluidTess = selfLitFluid ? m_opaqueTess : m_transTess;
+    Tesselator *fluidTess = selfLitFluid ? m_opaqueTess : (isWater ? m_waterTess : m_transTess);
     // Water tint/alpha tuned toward MCPE visuals (blue tint + visible transparency).
     uint32_t topColor = isWater ? 0xA0E07040 : 0xFFFFFFFF;
     uint32_t bottomColor = isWater ? 0xB4B85C33 : 0xFFFFFFFF;
@@ -383,12 +403,17 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
     float h10 = cornerHeight(wX + 1, wZ);
     bool drawn = false;
 
-    bool isFancy = false;
     // Top
-    if (needFace(lx, ly, lz, cx, cz, id, 0, 1, 0, isFancy)) {
+    if (liquidShouldRenderFace(0, 1, 0, 1)) {
       float sl = getSkyLightRaw(lx, ly, lz, cx, cz, 0, 1, 0);
       float bl = getVertexBlockLight(wX, wY + 1, wZ, 0, 0, 0, 0, 0, 0);
+      if (waterBlkCenter > bl) bl = waterBlkCenter;
       float br = (bl > sl + 0.05f) ? bl : sl;
+      if (isWater && bl > 0.001f) {
+        float boost = bl * 1.45f;
+        if (boost > 1.0f) boost = 1.0f;
+        if (boost > br) br = boost;
+      }
       if (selfLitFluid) br = 1.0f;
       uint32_t c = applyLightToFace(topColor, br);
       float u0 = uv.top_x * ts + eps, v0 = uv.top_y * ts + eps;
@@ -410,10 +435,16 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
     }
 
     // Bottom
-    if (needFace(lx, ly, lz, cx, cz, id, 0, -1, 0, isFancy)) {
+    if (liquidShouldRenderFace(0, -1, 0, 0)) {
       float sl = getSkyLightRaw(lx, ly, lz, cx, cz, 0, -1, 0);
       float bl = getVertexBlockLight(wX, wY - 1, wZ, 0, 0, 0, 0, 0, 0);
+      if (waterBlkCenter > bl) bl = waterBlkCenter;
       float br = (bl > sl + 0.05f) ? bl : sl;
+      if (isWater && bl > 0.001f) {
+        float boost = bl * 1.45f;
+        if (boost > 1.0f) boost = 1.0f;
+        if (boost > br) br = boost;
+      }
       if (selfLitFluid) br = 1.0f;
       uint32_t c = applyLightToFace(bottomColor, br);
       float u0 = uv.bot_x * ts + eps, v0 = uv.bot_y * ts + eps;
@@ -435,11 +466,17 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
     }
 
     auto addSide = [&](int dx, int dz) {
-      bool localFancy = false;
-      if (!needFace(lx, ly, lz, cx, cz, id, dx, 0, dz, localFancy)) return;
+      int face = (dz == -1) ? 2 : (dz == 1 ? 3 : (dx == -1 ? 4 : 5));
+      if (!liquidShouldRenderFace(dx, 0, dz, face)) return;
       float sl = getSkyLightRaw(lx, ly, lz, cx, cz, dx, 0, dz);
       float bl = getVertexBlockLight(wX + dx, wY, wZ + dz, 0, 0, 0, 0, 0, 0);
+      if (waterBlkCenter > bl) bl = waterBlkCenter;
       float br = (bl > sl + 0.05f) ? bl : sl;
+      if (isWater && bl > 0.001f) {
+        float boost = bl * 1.45f;
+        if (boost > 1.0f) boost = 1.0f;
+        if (boost > br) br = boost;
+      }
       if (selfLitFluid) br = 1.0f;
       float sideBr = selfLitFluid ? br : (br * 0.85f);
       uint32_t c = applyLightToFace(sideColor, sideBr);
@@ -529,6 +566,7 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
     int wX = cx * CHUNK_SIZE_X + lx;
     int wY = ly;
     int wZ = cz * CHUNK_SIZE_Z + lz;
+    float stairBlkCenter = getVertexBlockLight(wX, wY, wZ, 0, 0, 0, 0, 0, 0);
     const float ts = 1.0f / 16.0f;
     const float eps = 0.125f / 256.0f;
     bool drawn = false;
@@ -561,18 +599,10 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
       x = wx + rx;
       z = wz + rz;
     };
-    auto lpack = [&](uint32_t baseCol, int lx, int ly, int lz, int dx1, int dy1, int dz1, int dx2, int dy2, int dz2) -> uint64_t {
-      float sl = getVertexSkyLight(lx, ly, lz, dx1, dy1, dz1, dx2, dy2, dz2);
-      float bl = getVertexBlockLight(lx, ly, lz, dx1, dy1, dz1, dx2, dy2, dz2);
-      uint32_t c = applyLightToFace(baseCol, sl);
-      float em = bl * (1.0f - 0.75f * sl);
-      if (em < 0.0f) em = 0.0f;
-      uint32_t e = applyLightToFace(baseCol, em);
-      return ((uint64_t)e << 32) | c;
-    };
-    auto addQuadRot = [&](float u0, float v0, float u1, float v1, uint64_t c00_p, uint64_t c10_p, uint64_t c01_p, uint64_t c11_p,
-                          float x00, float y00, float z00, float x10, float y10, float z10,
-                          float x01, float y01, float z01, float x11, float y11, float z11) {
+    auto addQuadRotTo = [&](Tesselator *dst, float u0, float v0, float u1, float v1,
+                            uint32_t c00, uint32_t c10, uint32_t c01, uint32_t c11,
+                            float x00, float y00, float z00, float x10, float y10, float z10,
+                            float x01, float y01, float z01, float x11, float y11, float z11) {
       if (upsideDown) {
         y00 = wy + 1.0f - (y00 - wy);
         y10 = wy + 1.0f - (y10 - wy);
@@ -583,18 +613,19 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
       
       uint32_t c00 = (uint32_t)c00_p, c10 = (uint32_t)c10_p, c01 = (uint32_t)c01_p, c11 = (uint32_t)c11_p;
       if (upsideDown) {
-        t->addQuadReversed(u0, v0, u1, v1, c00, c10, c01, c11, x00, y00, z00, x10, y10, z10, x01, y01, z01, x11, y11, z11);
+        dst->addQuadReversed(u0, v0, u1, v1, c00, c10, c01, c11,
+                             x00, y00, z00, x10, y10, z10, x01, y01, z01, x11, y11, z11);
       } else {
-        t->addQuad(u0, v0, u1, v1, c00, c10, c01, c11, x00, y00, z00, x10, y10, z10, x01, y01, z01, x11, y11, z11);
+        dst->addQuad(u0, v0, u1, v1, c00, c10, c01, c11,
+                     x00, y00, z00, x10, y10, z10, x01, y01, z01, x11, y11, z11);
       }
-      uint32_t e00 = (uint32_t)(c00_p >> 32), e10 = (uint32_t)(c10_p >> 32), e01 = (uint32_t)(c01_p >> 32), e11 = (uint32_t)(c11_p >> 32);
-      if ((e00 & 0xFFFFFF) || (e10 & 0xFFFFFF) || (e01 & 0xFFFFFF) || (e11 & 0xFFFFFF)) {
-        if (upsideDown) {
-          m_emitTess->addQuadReversed(u0, v0, u1, v1, e00, e10, e01, e11, x00, y00, z00, x10, y10, z10, x01, y01, z01, x11, y11, z11);
-        } else {
-          m_emitTess->addQuad(u0, v0, u1, v1, e00, e10, e01, e11, x00, y00, z00, x10, y10, z10, x01, y01, z01, x11, y11, z11);
-        }
-      }
+    };
+    auto addQuadRot = [&](float u0, float v0, float u1, float v1,
+                          uint32_t c00, uint32_t c10, uint32_t c01, uint32_t c11,
+                          float x00, float y00, float z00, float x10, float y10, float z10,
+                          float x01, float y01, float z01, float x11, float y11, float z11) {
+      addQuadRotTo(t, u0, v0, u1, v1, c00, c10, c01, c11,
+                   x00, y00, z00, x10, y10, z10, x01, y01, z01, x11, y11, z11);
     };
     auto stairNeedFace = [&](int dx, int dy, int dz) -> bool {
       int ndx = dx, ndz = dz;
@@ -606,80 +637,135 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
     };
 
     // Per-vertex face colors (same sampling style as full blocks) to avoid
-    // flat-looking stair lighting.
-    uint64_t topC00 = lpack(LIGHT_TOP, wX, wY + 1, wZ, -1, 0, 0, 0, 0, -1);
-    uint64_t topC10 = lpack(LIGHT_TOP, wX, wY + 1, wZ,  1, 0, 0, 0, 0, -1);
-    uint64_t topC01 = lpack(LIGHT_TOP, wX, wY + 1, wZ, -1, 0, 0, 0, 0,  1);
-    uint64_t topC11 = lpack(LIGHT_TOP, wX, wY + 1, wZ,  1, 0, 0, 0, 0,  1);
-    uint64_t botC00 = lpack(LIGHT_BOT, wX, wY - 1, wZ, -1, 0, 0, 0, 0, -1);
-    uint64_t botC10 = lpack(LIGHT_BOT, wX, wY - 1, wZ,  1, 0, 0, 0, 0, -1);
-    uint64_t botC01 = lpack(LIGHT_BOT, wX, wY - 1, wZ, -1, 0, 0, 0, 0,  1);
-    uint64_t botC11 = lpack(LIGHT_BOT, wX, wY - 1, wZ,  1, 0, 0, 0, 0,  1);
-    uint64_t midTopC00 = lpack(LIGHT_TOP, wX, wY, wZ, -1, 0, 0, 0, 0, -1);
-    uint64_t midTopC10 = lpack(LIGHT_TOP, wX, wY, wZ,  1, 0, 0, 0, 0, -1);
-    uint64_t midTopC01 = lpack(LIGHT_TOP, wX, wY, wZ, -1, 0, 0, 0, 0,  1);
-    uint64_t midTopC11 = lpack(LIGHT_TOP, wX, wY, wZ,  1, 0, 0, 0, 0,  1);
-    uint64_t midBotC00 = lpack(LIGHT_BOT, wX, wY, wZ, -1, 0, 0, 0, 0, -1);
-    uint64_t midBotC10 = lpack(LIGHT_BOT, wX, wY, wZ,  1, 0, 0, 0, 0, -1);
-    uint64_t midBotC01 = lpack(LIGHT_BOT, wX, wY, wZ, -1, 0, 0, 0, 0,  1);
-    uint64_t midBotC11 = lpack(LIGHT_BOT, wX, wY, wZ,  1, 0, 0, 0, 0,  1);
-
+    // flat-looking stair lighting. Include block-light contribution so stairs
+    // are lit by torches/glowstone at night like slabs/full cubes.
+    auto stairLitColor = [&](uint32_t base, int sx, int sy, int sz,
+                             int dx1, int dy1, int dz1,
+                             int dx2, int dy2, int dz2) -> uint32_t {
+      float sky = getVertexSkyLight(sx, sy, sz, dx1, dy1, dz1, dx2, dy2, dz2);
+      float blk = getVertexBlockLight(sx, sy, sz, dx1, dy1, dz1, dx2, dy2, dz2);
+      float br = sky;
+      if (blk > 0.001f) {
+        float boost = blk * 1.10f;
+        if (boost > 1.0f) boost = 1.0f;
+        if (boost > br) br = boost;
+      }
+      return applyLightToFace(base, br);
+    };
+    auto stairEmitColor = [&](uint32_t base, int sx, int sy, int sz,
+                              int dx1, int dy1, int dz1,
+                              int dx2, int dy2, int dz2) -> uint32_t {
+      float sky = getVertexSkyLight(sx, sy, sz, dx1, dy1, dz1, dx2, dy2, dz2);
+      float blk = getVertexBlockLight(sx, sy, sz, dx1, dy1, dz1, dx2, dy2, dz2);
+      // Match slab/full-block opaque emit shaping: keep block-light gradient,
+      // but damp it when skylight is already strong to avoid flat overexposure.
+      float e = blk * (1.0f - 0.75f * sky);
+      if (e < 0.0f) e = 0.0f;
+      if (e > 1.0f) e = 1.0f;
+      return applyLightToFace(base, e);
+    };
+    uint32_t topC00 = stairLitColor(LIGHT_TOP, wX, wY + 1, wZ, -1, 0, 0, 0, 0, -1);
+    uint32_t topC10 = stairLitColor(LIGHT_TOP, wX, wY + 1, wZ,  1, 0, 0, 0, 0, -1);
+    uint32_t topC01 = stairLitColor(LIGHT_TOP, wX, wY + 1, wZ, -1, 0, 0, 0, 0,  1);
+    uint32_t topC11 = stairLitColor(LIGHT_TOP, wX, wY + 1, wZ,  1, 0, 0, 0, 0,  1);
+    uint32_t botC00 = stairLitColor(LIGHT_BOT, wX, wY - 1, wZ, -1, 0, 0, 0, 0, -1);
+    uint32_t botC10 = stairLitColor(LIGHT_BOT, wX, wY - 1, wZ,  1, 0, 0, 0, 0, -1);
+    uint32_t botC01 = stairLitColor(LIGHT_BOT, wX, wY - 1, wZ, -1, 0, 0, 0, 0,  1);
+    uint32_t botC11 = stairLitColor(LIGHT_BOT, wX, wY - 1, wZ,  1, 0, 0, 0, 0,  1);
     const int sideTopY = upsideDown ? -1 : 1;
     const int sideBottomY = upsideDown ? 1 : -1;
-    uint64_t northC10 = lpack(LIGHT_SIDE, wX, wY, wZ - 1,  1, 0, 0, 0, sideBottomY, 0);
-    uint64_t northC00 = lpack(LIGHT_SIDE, wX, wY, wZ - 1, -1, 0, 0, 0, sideBottomY, 0);
-    uint64_t midNorthC11 = lpack(LIGHT_SIDE, wX, wY, wZ,  1, 0, 0, 0, sideTopY, 0);
-    uint64_t midNorthC01 = lpack(LIGHT_SIDE, wX, wY, wZ, -1, 0, 0, 0, sideTopY, 0);
-    uint64_t midNorthC10 = lpack(LIGHT_SIDE, wX, wY, wZ,  1, 0, 0, 0, sideBottomY, 0);
-    uint64_t midNorthC00 = lpack(LIGHT_SIDE, wX, wY, wZ, -1, 0, 0, 0, sideBottomY, 0);
-    uint64_t southC01 = lpack(LIGHT_SIDE, wX, wY, wZ + 1, -1, 0, 0, 0, sideTopY, 0);
-    uint64_t southC11 = lpack(LIGHT_SIDE, wX, wY, wZ + 1,  1, 0, 0, 0, sideTopY, 0);
-    uint64_t southC00 = lpack(LIGHT_SIDE, wX, wY, wZ + 1, -1, 0, 0, 0, sideBottomY, 0);
-    uint64_t southC10 = lpack(LIGHT_SIDE, wX, wY, wZ + 1,  1, 0, 0, 0, sideBottomY, 0);
-    uint64_t westC01 = lpack(LIGHT_SIDE, wX - 1, wY, wZ, 0, sideTopY, 0, 0, 0,-1);
-    uint64_t westC11 = lpack(LIGHT_SIDE, wX - 1, wY, wZ, 0, sideTopY, 0, 0, 0, 1);
-    uint64_t westC00 = lpack(LIGHT_SIDE, wX - 1, wY, wZ, 0, sideBottomY, 0, 0, 0,-1);
-    uint64_t westC10 = lpack(LIGHT_SIDE, wX - 1, wY, wZ, 0, sideBottomY, 0, 0, 0, 1);
-    uint64_t eastC11 = lpack(LIGHT_SIDE, wX + 1, wY, wZ, 0, sideTopY, 0, 0, 0, 1);
-    uint64_t eastC01 = lpack(LIGHT_SIDE, wX + 1, wY, wZ, 0, sideTopY, 0, 0, 0,-1);
-    uint64_t eastC10 = lpack(LIGHT_SIDE, wX + 1, wY, wZ, 0, sideBottomY, 0, 0, 0, 1);
-    uint64_t eastC00 = lpack(LIGHT_SIDE, wX + 1, wY, wZ, 0, sideBottomY, 0, 0, 0,-1);
-    
-    auto lerpPack = [&](uint64_t a, uint64_t b, float t) -> uint64_t {
-      auto lerpHalf = [&](uint32_t c1, uint32_t c2) -> uint32_t {
-        uint8_t aa=(c1>>24)&0xFF, ba=(c2>>24)&0xFF;
-        uint8_t ab=(c1>>16)&0xFF, bb=(c2>>16)&0xFF;
-        uint8_t ag=(c1>>8)&0xFF, bg=(c2>>8)&0xFF;
-        uint8_t ar=c1&0xFF, br=c2&0xFF;
-        return ((uint32_t)(aa+(ba-aa)*t)<<24)|((uint32_t)(ab+(bb-ab)*t)<<16)|((uint32_t)(ag+(bg-ag)*t)<<8)|(uint32_t)(ar+(br-ar)*t);
-      };
-      return ((uint64_t)lerpHalf((uint32_t)(a>>32), (uint32_t)(b>>32)) << 32) | lerpHalf((uint32_t)a, (uint32_t)b);
+    uint32_t northC11 = stairLitColor(LIGHT_SIDE, wX, wY, wZ - 1,  1, 0, 0, 0, sideTopY, 0);
+    uint32_t northC01 = stairLitColor(LIGHT_SIDE, wX, wY, wZ - 1, -1, 0, 0, 0, sideTopY, 0);
+    uint32_t northC10 = stairLitColor(LIGHT_SIDE, wX, wY, wZ - 1,  1, 0, 0, 0, sideBottomY, 0);
+    uint32_t northC00 = stairLitColor(LIGHT_SIDE, wX, wY, wZ - 1, -1, 0, 0, 0, sideBottomY, 0);
+    uint32_t southC01 = stairLitColor(LIGHT_SIDE, wX, wY, wZ + 1, -1, 0, 0, 0, sideTopY, 0);
+    uint32_t southC11 = stairLitColor(LIGHT_SIDE, wX, wY, wZ + 1,  1, 0, 0, 0, sideTopY, 0);
+    uint32_t southC00 = stairLitColor(LIGHT_SIDE, wX, wY, wZ + 1, -1, 0, 0, 0, sideBottomY, 0);
+    uint32_t southC10 = stairLitColor(LIGHT_SIDE, wX, wY, wZ + 1,  1, 0, 0, 0, sideBottomY, 0);
+    uint32_t westC01 = stairLitColor(LIGHT_SIDE, wX - 1, wY, wZ, 0, sideTopY, 0, 0, 0,-1);
+    uint32_t westC11 = stairLitColor(LIGHT_SIDE, wX - 1, wY, wZ, 0, sideTopY, 0, 0, 0, 1);
+    uint32_t westC00 = stairLitColor(LIGHT_SIDE, wX - 1, wY, wZ, 0, sideBottomY, 0, 0, 0,-1);
+    uint32_t westC10 = stairLitColor(LIGHT_SIDE, wX - 1, wY, wZ, 0, sideBottomY, 0, 0, 0, 1);
+    uint32_t eastC11 = stairLitColor(LIGHT_SIDE, wX + 1, wY, wZ, 0, sideTopY, 0, 0, 0, 1);
+    uint32_t eastC01 = stairLitColor(LIGHT_SIDE, wX + 1, wY, wZ, 0, sideTopY, 0, 0, 0,-1);
+    uint32_t eastC10 = stairLitColor(LIGHT_SIDE, wX + 1, wY, wZ, 0, sideBottomY, 0, 0, 0, 1);
+    uint32_t eastC00 = stairLitColor(LIGHT_SIDE, wX + 1, wY, wZ, 0, sideBottomY, 0, 0, 0,-1);
+    uint32_t eTopC00 = stairEmitColor(LIGHT_TOP, wX, wY + 1, wZ, -1, 0, 0, 0, 0, -1);
+    uint32_t eTopC10 = stairEmitColor(LIGHT_TOP, wX, wY + 1, wZ,  1, 0, 0, 0, 0, -1);
+    uint32_t eTopC01 = stairEmitColor(LIGHT_TOP, wX, wY + 1, wZ, -1, 0, 0, 0, 0,  1);
+    uint32_t eTopC11 = stairEmitColor(LIGHT_TOP, wX, wY + 1, wZ,  1, 0, 0, 0, 0,  1);
+    uint32_t eBotC00 = stairEmitColor(LIGHT_BOT, wX, wY - 1, wZ, -1, 0, 0, 0, 0, -1);
+    uint32_t eBotC10 = stairEmitColor(LIGHT_BOT, wX, wY - 1, wZ,  1, 0, 0, 0, 0, -1);
+    uint32_t eBotC01 = stairEmitColor(LIGHT_BOT, wX, wY - 1, wZ, -1, 0, 0, 0, 0,  1);
+    uint32_t eBotC11 = stairEmitColor(LIGHT_BOT, wX, wY - 1, wZ,  1, 0, 0, 0, 0,  1);
+    uint32_t eNorthC11 = stairEmitColor(LIGHT_SIDE, wX, wY, wZ - 1,  1, 0, 0, 0, sideTopY, 0);
+    uint32_t eNorthC01 = stairEmitColor(LIGHT_SIDE, wX, wY, wZ - 1, -1, 0, 0, 0, sideTopY, 0);
+    uint32_t eNorthC10 = stairEmitColor(LIGHT_SIDE, wX, wY, wZ - 1,  1, 0, 0, 0, sideBottomY, 0);
+    uint32_t eNorthC00 = stairEmitColor(LIGHT_SIDE, wX, wY, wZ - 1, -1, 0, 0, 0, sideBottomY, 0);
+    uint32_t eSouthC01 = stairEmitColor(LIGHT_SIDE, wX, wY, wZ + 1, -1, 0, 0, 0, sideTopY, 0);
+    uint32_t eSouthC11 = stairEmitColor(LIGHT_SIDE, wX, wY, wZ + 1,  1, 0, 0, 0, sideTopY, 0);
+    uint32_t eSouthC00 = stairEmitColor(LIGHT_SIDE, wX, wY, wZ + 1, -1, 0, 0, 0, sideBottomY, 0);
+    uint32_t eSouthC10 = stairEmitColor(LIGHT_SIDE, wX, wY, wZ + 1,  1, 0, 0, 0, sideBottomY, 0);
+    uint32_t eWestC01 = stairEmitColor(LIGHT_SIDE, wX - 1, wY, wZ, 0, sideTopY, 0, 0, 0,-1);
+    uint32_t eWestC11 = stairEmitColor(LIGHT_SIDE, wX - 1, wY, wZ, 0, sideTopY, 0, 0, 0, 1);
+    uint32_t eWestC00 = stairEmitColor(LIGHT_SIDE, wX - 1, wY, wZ, 0, sideBottomY, 0, 0, 0,-1);
+    uint32_t eWestC10 = stairEmitColor(LIGHT_SIDE, wX - 1, wY, wZ, 0, sideBottomY, 0, 0, 0, 1);
+    uint32_t eEastC11 = stairEmitColor(LIGHT_SIDE, wX + 1, wY, wZ, 0, sideTopY, 0, 0, 0, 1);
+    uint32_t eEastC01 = stairEmitColor(LIGHT_SIDE, wX + 1, wY, wZ, 0, sideTopY, 0, 0, 0,-1);
+    uint32_t eEastC10 = stairEmitColor(LIGHT_SIDE, wX + 1, wY, wZ, 0, sideBottomY, 0, 0, 0, 1);
+    uint32_t eEastC00 = stairEmitColor(LIGHT_SIDE, wX + 1, wY, wZ, 0, sideBottomY, 0, 0, 0,-1);
+    auto lerpColor = [](uint32_t a, uint32_t b, float t) -> uint32_t {
+      uint8_t aa = (a >> 24) & 0xFF, ba = (b >> 24) & 0xFF;
+      uint8_t ab = (a >> 16) & 0xFF, bb = (b >> 16) & 0xFF;
+      uint8_t ag = (a >> 8)  & 0xFF, bg = (b >> 8)  & 0xFF;
+      uint8_t ar =  a        & 0xFF, br =  b        & 0xFF;
+      uint8_t oa = (uint8_t)(aa + (ba - aa) * t);
+      uint8_t ob = (uint8_t)(ab + (bb - ab) * t);
+      uint8_t og = (uint8_t)(ag + (bg - ag) * t);
+      uint8_t orr = (uint8_t)(ar + (br - ar) * t);
+      return ((uint32_t)oa << 24) | ((uint32_t)ob << 16) | ((uint32_t)og << 8) | (uint32_t)orr;
     };
-
-    uint64_t westMidZ0 = lerpPack(westC00, westC01, 0.5f);
-    uint64_t westMidZ1 = lerpPack(westC10, westC11, 0.5f);
-    uint64_t eastMidZ1 = lerpPack(eastC10, eastC11, 0.5f);
-    uint64_t eastMidZ0 = lerpPack(eastC00, eastC01, 0.5f);
-    uint64_t northMidR = lerpPack(midNorthC10, midNorthC11, 0.5f);
-    uint64_t northMidL = lerpPack(midNorthC00, midNorthC01, 0.5f);
-
+    uint32_t westMidZ0 = lerpColor(westC00, westC01, 0.5f);
+    uint32_t westMidZ1 = lerpColor(westC10, westC11, 0.5f);
+    uint32_t eastMidZ1 = lerpColor(eastC10, eastC11, 0.5f);
+    uint32_t eastMidZ0 = lerpColor(eastC00, eastC01, 0.5f);
+    uint32_t northMidR = lerpColor(northC10, northC11, 0.5f);
+    uint32_t northMidL = lerpColor(northC00, northC01, 0.5f);
+    uint32_t eWestMidZ0 = lerpColor(eWestC00, eWestC01, 0.5f);
+    uint32_t eWestMidZ1 = lerpColor(eWestC10, eWestC11, 0.5f);
+    uint32_t eEastMidZ1 = lerpColor(eEastC10, eEastC11, 0.5f);
+    uint32_t eEastMidZ0 = lerpColor(eEastC00, eEastC01, 0.5f);
+    uint32_t eNorthMidR = lerpColor(eNorthC10, eNorthC11, 0.5f);
+    uint32_t eNorthMidL = lerpColor(eNorthC00, eNorthC01, 0.5f);
     // For upside-down stairs Y-mirroring swaps which horizontal planes are
     // exposed to the player: use top-light for the exposed top and bottom-light
     // for the hidden underside.
-    uint64_t stepTopC00 = upsideDown ? midBotC00 : midTopC00;
-    uint64_t stepTopC10 = upsideDown ? midBotC10 : midTopC10;
-    uint64_t stepTopC01 = upsideDown ? midBotC01 : midTopC01;
-    uint64_t stepTopC11 = upsideDown ? midBotC11 : midTopC11;
-    uint64_t stepBottomC01 = upsideDown ? topC01 : botC01;
-    uint64_t stepBottomC11 = upsideDown ? topC11 : botC11;
-    uint64_t stepBottomC00 = upsideDown ? topC00 : botC00;
-    uint64_t stepBottomC10 = upsideDown ? topC10 : botC10;
+    uint32_t stepTopC00 = upsideDown ? botC00 : topC00;
+    uint32_t stepTopC10 = upsideDown ? botC10 : topC10;
+    uint32_t stepTopC01 = upsideDown ? botC01 : topC01;
+    uint32_t stepTopC11 = upsideDown ? botC11 : topC11;
+    uint32_t stepBottomC01 = upsideDown ? topC01 : botC01;
+    uint32_t stepBottomC11 = upsideDown ? topC11 : botC11;
+    uint32_t stepBottomC00 = upsideDown ? topC00 : botC00;
+    uint32_t stepBottomC10 = upsideDown ? topC10 : botC10;
+    uint32_t eStepTopC00 = upsideDown ? eBotC00 : eTopC00;
+    uint32_t eStepTopC10 = upsideDown ? eBotC10 : eTopC10;
+    uint32_t eStepTopC01 = upsideDown ? eBotC01 : eTopC01;
+    uint32_t eStepTopC11 = upsideDown ? eBotC11 : eTopC11;
+    uint32_t eStepBottomC01 = upsideDown ? eTopC01 : eBotC01;
+    uint32_t eStepBottomC11 = upsideDown ? eTopC11 : eBotC11;
+    uint32_t eStepBottomC00 = upsideDown ? eTopC00 : eBotC00;
+    uint32_t eStepBottomC10 = upsideDown ? eTopC10 : eBotC10;
+    const bool stairEmit = stairBlkCenter > 0.001f;
 
     // Top of lower step (front half, y = 0.5, z:0..0.5)
     if (stairNeedFace(0, 1, 0)) {
       addQuadRot(uTop0, vTop0, uTop1, vTopHalf, stepTopC00, stepTopC10, stepTopC01, stepTopC11,
                  wx, wy + 0.5f, wz, wx + 1.0f, wy + 0.5f, wz,
                  wx, wy + 0.5f, wz + 0.5f, wx + 1.0f, wy + 0.5f, wz + 0.5f);
+      if (stairEmit) addQuadRotTo(m_emitTess, uTop0, vTop0, uTop1, vTopHalf, eStepTopC00, eStepTopC10, eStepTopC01, eStepTopC11,
+                                  wx, wy + 0.5f, wz, wx + 1.0f, wy + 0.5f, wz,
+                                  wx, wy + 0.5f, wz + 0.5f, wx + 1.0f, wy + 0.5f, wz + 0.5f);
       drawn = true;
     }
 
@@ -688,6 +774,9 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
       addQuadRot(uTop0, vTopHalf, uTop1, vTop1, stepTopC00, stepTopC10, stepTopC01, stepTopC11,
                  wx, wy + 1.0f, wz + 0.5f, wx + 1.0f, wy + 1.0f, wz + 0.5f,
                  wx, wy + 1.0f, wz + 1.0f, wx + 1.0f, wy + 1.0f, wz + 1.0f);
+      if (stairEmit) addQuadRotTo(m_emitTess, uTop0, vTopHalf, uTop1, vTop1, eStepTopC00, eStepTopC10, eStepTopC01, eStepTopC11,
+                                  wx, wy + 1.0f, wz + 0.5f, wx + 1.0f, wy + 1.0f, wz + 0.5f,
+                                  wx, wy + 1.0f, wz + 1.0f, wx + 1.0f, wy + 1.0f, wz + 1.0f);
       drawn = true;
     }
 
@@ -696,6 +785,9 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
       addQuadRot(uBot0, vBot0, uBot1, vBot1, stepBottomC01, stepBottomC11, stepBottomC00, stepBottomC10,
                  wx, wy, wz + 1.0f, wx + 1.0f, wy, wz + 1.0f,
                  wx, wy, wz, wx + 1.0f, wy, wz);
+      if (stairEmit) addQuadRotTo(m_emitTess, uBot0, vBot0, uBot1, vBot1, eStepBottomC01, eStepBottomC11, eStepBottomC00, eStepBottomC10,
+                                  wx, wy, wz + 1.0f, wx + 1.0f, wy, wz + 1.0f,
+                                  wx, wy, wz, wx + 1.0f, wy, wz);
       drawn = true;
     }
 
@@ -704,6 +796,9 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
       addQuadRot(uSide0, vSideHalf, uSide1, vSide1, northMidR, northMidL, northC10, northC00,
                  wx + 1.0f, wy + 0.5f, wz, wx, wy + 0.5f, wz,
                  wx + 1.0f, wy, wz, wx, wy, wz);
+      if (stairEmit) addQuadRotTo(m_emitTess, uSide0, vSideHalf, uSide1, vSide1, eNorthMidR, eNorthMidL, eNorthC10, eNorthC00,
+                                  wx + 1.0f, wy + 0.5f, wz, wx, wy + 0.5f, wz,
+                                  wx + 1.0f, wy, wz, wx, wy, wz);
       drawn = true;
     }
 
@@ -712,6 +807,9 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
       addQuadRot(uSide0, vSide0, uSide1, vSide1, southC01, southC11, southC00, southC10,
                  wx, wy + 1.0f, wz + 1.0f, wx + 1.0f, wy + 1.0f, wz + 1.0f,
                  wx, wy, wz + 1.0f, wx + 1.0f, wy, wz + 1.0f);
+      if (stairEmit) addQuadRotTo(m_emitTess, uSide0, vSide0, uSide1, vSide1, eSouthC01, eSouthC11, eSouthC00, eSouthC10,
+                                  wx, wy + 1.0f, wz + 1.0f, wx + 1.0f, wy + 1.0f, wz + 1.0f,
+                                  wx, wy, wz + 1.0f, wx + 1.0f, wy, wz + 1.0f);
       drawn = true;
     }
 
@@ -720,10 +818,16 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
       addQuadRot(uSide0, vSideHalf, uSide1, vSide1, westMidZ0, westMidZ1, westC00, westC10,
                  wx, wy + 0.5f, wz, wx, wy + 0.5f, wz + 1.0f,
                  wx, wy, wz, wx, wy, wz + 1.0f);
+      if (stairEmit) addQuadRotTo(m_emitTess, uSide0, vSideHalf, uSide1, vSide1, eWestMidZ0, eWestMidZ1, eWestC00, eWestC10,
+                                  wx, wy + 0.5f, wz, wx, wy + 0.5f, wz + 1.0f,
+                                  wx, wy, wz, wx, wy, wz + 1.0f);
       // West face upper rear half
       addQuadRot(uSideHalf, vSide0, uSide1, vSideHalf, westC01, westC11, westMidZ0, westMidZ1,
                  wx, wy + 1.0f, wz + 0.5f, wx, wy + 1.0f, wz + 1.0f,
                  wx, wy + 0.5f, wz + 0.5f, wx, wy + 0.5f, wz + 1.0f);
+      if (stairEmit) addQuadRotTo(m_emitTess, uSideHalf, vSide0, uSide1, vSideHalf, eWestC01, eWestC11, eWestMidZ0, eWestMidZ1,
+                                  wx, wy + 1.0f, wz + 0.5f, wx, wy + 1.0f, wz + 1.0f,
+                                  wx, wy + 0.5f, wz + 0.5f, wx, wy + 0.5f, wz + 1.0f);
       drawn = true;
     }
 
@@ -732,10 +836,16 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
       addQuadRot(uSide0, vSideHalf, uSide1, vSide1, eastMidZ1, eastMidZ0, eastC10, eastC00,
                  wx + 1.0f, wy + 0.5f, wz + 1.0f, wx + 1.0f, wy + 0.5f, wz,
                  wx + 1.0f, wy, wz + 1.0f, wx + 1.0f, wy, wz);
+      if (stairEmit) addQuadRotTo(m_emitTess, uSide0, vSideHalf, uSide1, vSide1, eEastMidZ1, eEastMidZ0, eEastC10, eEastC00,
+                                  wx + 1.0f, wy + 0.5f, wz + 1.0f, wx + 1.0f, wy + 0.5f, wz,
+                                  wx + 1.0f, wy, wz + 1.0f, wx + 1.0f, wy, wz);
       // East face upper rear half
       addQuadRot(uSideHalf, vSide0, uSide1, vSideHalf, eastC11, eastC01, eastMidZ1, eastMidZ0,
                  wx + 1.0f, wy + 1.0f, wz + 1.0f, wx + 1.0f, wy + 1.0f, wz + 0.5f,
                  wx + 1.0f, wy + 0.5f, wz + 1.0f, wx + 1.0f, wy + 0.5f, wz + 0.5f);
+      if (stairEmit) addQuadRotTo(m_emitTess, uSideHalf, vSide0, uSide1, vSideHalf, eEastC11, eEastC01, eEastMidZ1, eEastMidZ0,
+                                  wx + 1.0f, wy + 1.0f, wz + 1.0f, wx + 1.0f, wy + 1.0f, wz + 0.5f,
+                                  wx + 1.0f, wy + 0.5f, wz + 1.0f, wx + 1.0f, wy + 0.5f, wz + 0.5f);
       drawn = true;
     }
 
@@ -743,6 +853,9 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
     addQuadRot(uSide0, vSide0, uSide1, vSideHalf, midNorthC11, midNorthC01, northMidR, northMidL,
                wx + 1.0f, wy + 1.0f, wz + 0.5f, wx, wy + 1.0f, wz + 0.5f,
                wx + 1.0f, wy + 0.5f, wz + 0.5f, wx, wy + 0.5f, wz + 0.5f);
+    if (stairEmit) addQuadRotTo(m_emitTess, uSide0, vSide0, uSide1, vSideHalf, eNorthC11, eNorthC01, eNorthMidR, eNorthMidL,
+                                wx + 1.0f, wy + 1.0f, wz + 0.5f, wx, wy + 1.0f, wz + 0.5f,
+                                wx + 1.0f, wy + 0.5f, wz + 0.5f, wx, wy + 0.5f, wz + 0.5f);
     drawn = true;
 
     return drawn;

@@ -50,5 +50,6 @@ private:
   Tesselator m_opaqueTess;
   Tesselator m_transTess;
   Tesselator m_transFancyTess;
+  Tesselator m_waterTess;
   Tesselator m_emitTess;  // Block-lit (torch) faces, always full brightness
 };
