@@ -561,7 +561,16 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
       x = wx + rx;
       z = wz + rz;
     };
-    auto addQuadRot = [&](float u0, float v0, float u1, float v1, uint32_t c00, uint32_t c10, uint32_t c01, uint32_t c11,
+    auto lpack = [&](uint32_t baseCol, int lx, int ly, int lz, int dx1, int dy1, int dz1, int dx2, int dy2, int dz2) -> uint64_t {
+      float sl = getVertexSkyLight(lx, ly, lz, dx1, dy1, dz1, dx2, dy2, dz2);
+      float bl = getVertexBlockLight(lx, ly, lz, dx1, dy1, dz1, dx2, dy2, dz2);
+      uint32_t c = applyLightToFace(baseCol, sl);
+      float em = bl * (1.0f - 0.75f * sl);
+      if (em < 0.0f) em = 0.0f;
+      uint32_t e = applyLightToFace(baseCol, em);
+      return ((uint64_t)e << 32) | c;
+    };
+    auto addQuadRot = [&](float u0, float v0, float u1, float v1, uint64_t c00_p, uint64_t c10_p, uint64_t c01_p, uint64_t c11_p,
                           float x00, float y00, float z00, float x10, float y10, float z10,
                           float x01, float y01, float z01, float x11, float y11, float z11) {
       if (upsideDown) {
@@ -571,14 +580,20 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
         y11 = wy + 1.0f - (y11 - wy);
       }
       rotateLocal(x00, z00); rotateLocal(x10, z10); rotateLocal(x01, z01); rotateLocal(x11, z11);
-      // Mirroring Y for upside-down stairs flips winding, so emit a reversed
-      // winding quad while preserving the original UV corner mapping.
+      
+      uint32_t c00 = (uint32_t)c00_p, c10 = (uint32_t)c10_p, c01 = (uint32_t)c01_p, c11 = (uint32_t)c11_p;
       if (upsideDown) {
-        t->addQuadReversed(u0, v0, u1, v1, c00, c10, c01, c11,
-                           x00, y00, z00, x10, y10, z10, x01, y01, z01, x11, y11, z11);
+        t->addQuadReversed(u0, v0, u1, v1, c00, c10, c01, c11, x00, y00, z00, x10, y10, z10, x01, y01, z01, x11, y11, z11);
       } else {
-        t->addQuad(u0, v0, u1, v1, c00, c10, c01, c11,
-                   x00, y00, z00, x10, y10, z10, x01, y01, z01, x11, y11, z11);
+        t->addQuad(u0, v0, u1, v1, c00, c10, c01, c11, x00, y00, z00, x10, y10, z10, x01, y01, z01, x11, y11, z11);
+      }
+      uint32_t e00 = (uint32_t)(c00_p >> 32), e10 = (uint32_t)(c10_p >> 32), e01 = (uint32_t)(c01_p >> 32), e11 = (uint32_t)(c11_p >> 32);
+      if ((e00 & 0xFFFFFF) || (e10 & 0xFFFFFF) || (e01 & 0xFFFFFF) || (e11 & 0xFFFFFF)) {
+        if (upsideDown) {
+          m_emitTess->addQuadReversed(u0, v0, u1, v1, e00, e10, e01, e11, x00, y00, z00, x10, y10, z10, x01, y01, z01, x11, y11, z11);
+        } else {
+          m_emitTess->addQuad(u0, v0, u1, v1, e00, e10, e01, e11, x00, y00, z00, x10, y10, z10, x01, y01, z01, x11, y11, z11);
+        }
       }
     };
     auto stairNeedFace = [&](int dx, int dy, int dz) -> bool {
@@ -592,60 +607,73 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
 
     // Per-vertex face colors (same sampling style as full blocks) to avoid
     // flat-looking stair lighting.
-    uint32_t topC00 = applyLightToFace(LIGHT_TOP, getVertexSkyLight(wX, wY + 1, wZ, -1, 0, 0, 0, 0, -1));
-    uint32_t topC10 = applyLightToFace(LIGHT_TOP, getVertexSkyLight(wX, wY + 1, wZ,  1, 0, 0, 0, 0, -1));
-    uint32_t topC01 = applyLightToFace(LIGHT_TOP, getVertexSkyLight(wX, wY + 1, wZ, -1, 0, 0, 0, 0,  1));
-    uint32_t topC11 = applyLightToFace(LIGHT_TOP, getVertexSkyLight(wX, wY + 1, wZ,  1, 0, 0, 0, 0,  1));
-    uint32_t botC00 = applyLightToFace(LIGHT_BOT, getVertexSkyLight(wX, wY - 1, wZ, -1, 0, 0, 0, 0, -1));
-    uint32_t botC10 = applyLightToFace(LIGHT_BOT, getVertexSkyLight(wX, wY - 1, wZ,  1, 0, 0, 0, 0, -1));
-    uint32_t botC01 = applyLightToFace(LIGHT_BOT, getVertexSkyLight(wX, wY - 1, wZ, -1, 0, 0, 0, 0,  1));
-    uint32_t botC11 = applyLightToFace(LIGHT_BOT, getVertexSkyLight(wX, wY - 1, wZ,  1, 0, 0, 0, 0,  1));
+    uint64_t topC00 = lpack(LIGHT_TOP, wX, wY + 1, wZ, -1, 0, 0, 0, 0, -1);
+    uint64_t topC10 = lpack(LIGHT_TOP, wX, wY + 1, wZ,  1, 0, 0, 0, 0, -1);
+    uint64_t topC01 = lpack(LIGHT_TOP, wX, wY + 1, wZ, -1, 0, 0, 0, 0,  1);
+    uint64_t topC11 = lpack(LIGHT_TOP, wX, wY + 1, wZ,  1, 0, 0, 0, 0,  1);
+    uint64_t botC00 = lpack(LIGHT_BOT, wX, wY - 1, wZ, -1, 0, 0, 0, 0, -1);
+    uint64_t botC10 = lpack(LIGHT_BOT, wX, wY - 1, wZ,  1, 0, 0, 0, 0, -1);
+    uint64_t botC01 = lpack(LIGHT_BOT, wX, wY - 1, wZ, -1, 0, 0, 0, 0,  1);
+    uint64_t botC11 = lpack(LIGHT_BOT, wX, wY - 1, wZ,  1, 0, 0, 0, 0,  1);
+    uint64_t midTopC00 = lpack(LIGHT_TOP, wX, wY, wZ, -1, 0, 0, 0, 0, -1);
+    uint64_t midTopC10 = lpack(LIGHT_TOP, wX, wY, wZ,  1, 0, 0, 0, 0, -1);
+    uint64_t midTopC01 = lpack(LIGHT_TOP, wX, wY, wZ, -1, 0, 0, 0, 0,  1);
+    uint64_t midTopC11 = lpack(LIGHT_TOP, wX, wY, wZ,  1, 0, 0, 0, 0,  1);
+    uint64_t midBotC00 = lpack(LIGHT_BOT, wX, wY, wZ, -1, 0, 0, 0, 0, -1);
+    uint64_t midBotC10 = lpack(LIGHT_BOT, wX, wY, wZ,  1, 0, 0, 0, 0, -1);
+    uint64_t midBotC01 = lpack(LIGHT_BOT, wX, wY, wZ, -1, 0, 0, 0, 0,  1);
+    uint64_t midBotC11 = lpack(LIGHT_BOT, wX, wY, wZ,  1, 0, 0, 0, 0,  1);
+
     const int sideTopY = upsideDown ? -1 : 1;
     const int sideBottomY = upsideDown ? 1 : -1;
-    uint32_t northC11 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ - 1,  1, 0, 0, 0, sideTopY, 0));
-    uint32_t northC01 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ - 1, -1, 0, 0, 0, sideTopY, 0));
-    uint32_t northC10 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ - 1,  1, 0, 0, 0, sideBottomY, 0));
-    uint32_t northC00 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ - 1, -1, 0, 0, 0, sideBottomY, 0));
-    uint32_t southC01 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ + 1, -1, 0, 0, 0, sideTopY, 0));
-    uint32_t southC11 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ + 1,  1, 0, 0, 0, sideTopY, 0));
-    uint32_t southC00 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ + 1, -1, 0, 0, 0, sideBottomY, 0));
-    uint32_t southC10 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ + 1,  1, 0, 0, 0, sideBottomY, 0));
-    uint32_t westC01 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX - 1, wY, wZ, 0, sideTopY, 0, 0, 0,-1));
-    uint32_t westC11 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX - 1, wY, wZ, 0, sideTopY, 0, 0, 0, 1));
-    uint32_t westC00 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX - 1, wY, wZ, 0, sideBottomY, 0, 0, 0,-1));
-    uint32_t westC10 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX - 1, wY, wZ, 0, sideBottomY, 0, 0, 0, 1));
-    uint32_t eastC11 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX + 1, wY, wZ, 0, sideTopY, 0, 0, 0, 1));
-    uint32_t eastC01 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX + 1, wY, wZ, 0, sideTopY, 0, 0, 0,-1));
-    uint32_t eastC10 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX + 1, wY, wZ, 0, sideBottomY, 0, 0, 0, 1));
-    uint32_t eastC00 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX + 1, wY, wZ, 0, sideBottomY, 0, 0, 0,-1));
-    auto lerpColor = [](uint32_t a, uint32_t b, float t) -> uint32_t {
-      uint8_t aa = (a >> 24) & 0xFF, ba = (b >> 24) & 0xFF;
-      uint8_t ab = (a >> 16) & 0xFF, bb = (b >> 16) & 0xFF;
-      uint8_t ag = (a >> 8)  & 0xFF, bg = (b >> 8)  & 0xFF;
-      uint8_t ar =  a        & 0xFF, br =  b        & 0xFF;
-      uint8_t oa = (uint8_t)(aa + (ba - aa) * t);
-      uint8_t ob = (uint8_t)(ab + (bb - ab) * t);
-      uint8_t og = (uint8_t)(ag + (bg - ag) * t);
-      uint8_t orr = (uint8_t)(ar + (br - ar) * t);
-      return ((uint32_t)oa << 24) | ((uint32_t)ob << 16) | ((uint32_t)og << 8) | (uint32_t)orr;
+    uint64_t northC10 = lpack(LIGHT_SIDE, wX, wY, wZ - 1,  1, 0, 0, 0, sideBottomY, 0);
+    uint64_t northC00 = lpack(LIGHT_SIDE, wX, wY, wZ - 1, -1, 0, 0, 0, sideBottomY, 0);
+    uint64_t midNorthC11 = lpack(LIGHT_SIDE, wX, wY, wZ,  1, 0, 0, 0, sideTopY, 0);
+    uint64_t midNorthC01 = lpack(LIGHT_SIDE, wX, wY, wZ, -1, 0, 0, 0, sideTopY, 0);
+    uint64_t midNorthC10 = lpack(LIGHT_SIDE, wX, wY, wZ,  1, 0, 0, 0, sideBottomY, 0);
+    uint64_t midNorthC00 = lpack(LIGHT_SIDE, wX, wY, wZ, -1, 0, 0, 0, sideBottomY, 0);
+    uint64_t southC01 = lpack(LIGHT_SIDE, wX, wY, wZ + 1, -1, 0, 0, 0, sideTopY, 0);
+    uint64_t southC11 = lpack(LIGHT_SIDE, wX, wY, wZ + 1,  1, 0, 0, 0, sideTopY, 0);
+    uint64_t southC00 = lpack(LIGHT_SIDE, wX, wY, wZ + 1, -1, 0, 0, 0, sideBottomY, 0);
+    uint64_t southC10 = lpack(LIGHT_SIDE, wX, wY, wZ + 1,  1, 0, 0, 0, sideBottomY, 0);
+    uint64_t westC01 = lpack(LIGHT_SIDE, wX - 1, wY, wZ, 0, sideTopY, 0, 0, 0,-1);
+    uint64_t westC11 = lpack(LIGHT_SIDE, wX - 1, wY, wZ, 0, sideTopY, 0, 0, 0, 1);
+    uint64_t westC00 = lpack(LIGHT_SIDE, wX - 1, wY, wZ, 0, sideBottomY, 0, 0, 0,-1);
+    uint64_t westC10 = lpack(LIGHT_SIDE, wX - 1, wY, wZ, 0, sideBottomY, 0, 0, 0, 1);
+    uint64_t eastC11 = lpack(LIGHT_SIDE, wX + 1, wY, wZ, 0, sideTopY, 0, 0, 0, 1);
+    uint64_t eastC01 = lpack(LIGHT_SIDE, wX + 1, wY, wZ, 0, sideTopY, 0, 0, 0,-1);
+    uint64_t eastC10 = lpack(LIGHT_SIDE, wX + 1, wY, wZ, 0, sideBottomY, 0, 0, 0, 1);
+    uint64_t eastC00 = lpack(LIGHT_SIDE, wX + 1, wY, wZ, 0, sideBottomY, 0, 0, 0,-1);
+    
+    auto lerpPack = [&](uint64_t a, uint64_t b, float t) -> uint64_t {
+      auto lerpHalf = [&](uint32_t c1, uint32_t c2) -> uint32_t {
+        uint8_t aa=(c1>>24)&0xFF, ba=(c2>>24)&0xFF;
+        uint8_t ab=(c1>>16)&0xFF, bb=(c2>>16)&0xFF;
+        uint8_t ag=(c1>>8)&0xFF, bg=(c2>>8)&0xFF;
+        uint8_t ar=c1&0xFF, br=c2&0xFF;
+        return ((uint32_t)(aa+(ba-aa)*t)<<24)|((uint32_t)(ab+(bb-ab)*t)<<16)|((uint32_t)(ag+(bg-ag)*t)<<8)|(uint32_t)(ar+(br-ar)*t);
+      };
+      return ((uint64_t)lerpHalf((uint32_t)(a>>32), (uint32_t)(b>>32)) << 32) | lerpHalf((uint32_t)a, (uint32_t)b);
     };
-    uint32_t westMidZ0 = lerpColor(westC00, westC01, 0.5f);
-    uint32_t westMidZ1 = lerpColor(westC10, westC11, 0.5f);
-    uint32_t eastMidZ1 = lerpColor(eastC10, eastC11, 0.5f);
-    uint32_t eastMidZ0 = lerpColor(eastC00, eastC01, 0.5f);
-    uint32_t northMidR = lerpColor(northC10, northC11, 0.5f);
-    uint32_t northMidL = lerpColor(northC00, northC01, 0.5f);
+
+    uint64_t westMidZ0 = lerpPack(westC00, westC01, 0.5f);
+    uint64_t westMidZ1 = lerpPack(westC10, westC11, 0.5f);
+    uint64_t eastMidZ1 = lerpPack(eastC10, eastC11, 0.5f);
+    uint64_t eastMidZ0 = lerpPack(eastC00, eastC01, 0.5f);
+    uint64_t northMidR = lerpPack(midNorthC10, midNorthC11, 0.5f);
+    uint64_t northMidL = lerpPack(midNorthC00, midNorthC01, 0.5f);
+
     // For upside-down stairs Y-mirroring swaps which horizontal planes are
     // exposed to the player: use top-light for the exposed top and bottom-light
     // for the hidden underside.
-    uint32_t stepTopC00 = upsideDown ? botC00 : topC00;
-    uint32_t stepTopC10 = upsideDown ? botC10 : topC10;
-    uint32_t stepTopC01 = upsideDown ? botC01 : topC01;
-    uint32_t stepTopC11 = upsideDown ? botC11 : topC11;
-    uint32_t stepBottomC01 = upsideDown ? topC01 : botC01;
-    uint32_t stepBottomC11 = upsideDown ? topC11 : botC11;
-    uint32_t stepBottomC00 = upsideDown ? topC00 : botC00;
-    uint32_t stepBottomC10 = upsideDown ? topC10 : botC10;
+    uint64_t stepTopC00 = upsideDown ? midBotC00 : midTopC00;
+    uint64_t stepTopC10 = upsideDown ? midBotC10 : midTopC10;
+    uint64_t stepTopC01 = upsideDown ? midBotC01 : midTopC01;
+    uint64_t stepTopC11 = upsideDown ? midBotC11 : midTopC11;
+    uint64_t stepBottomC01 = upsideDown ? topC01 : botC01;
+    uint64_t stepBottomC11 = upsideDown ? topC11 : botC11;
+    uint64_t stepBottomC00 = upsideDown ? topC00 : botC00;
+    uint64_t stepBottomC10 = upsideDown ? topC10 : botC10;
 
     // Top of lower step (front half, y = 0.5, z:0..0.5)
     if (stairNeedFace(0, 1, 0)) {
@@ -712,7 +740,7 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
     }
 
     // Internal riser at z = 0.5
-    addQuadRot(uSide0, vSide0, uSide1, vSideHalf, northC11, northC01, northMidR, northMidL,
+    addQuadRot(uSide0, vSide0, uSide1, vSideHalf, midNorthC11, midNorthC01, northMidR, northMidL,
                wx + 1.0f, wy + 1.0f, wz + 0.5f, wx, wy + 1.0f, wz + 0.5f,
                wx + 1.0f, wy + 0.5f, wz + 0.5f, wx, wy + 0.5f, wz + 0.5f);
     drawn = true;
@@ -780,14 +808,15 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
 
   // TOP (+Y)
   if (needFace(lx, ly, lz, cx, cz, id, 0, 1, 0, isFancy)) {
-    float sl00 = getVertexSkyLight(wX, wY+1, wZ, -1,0,0, 0,0,-1);
-    float sl10 = getVertexSkyLight(wX, wY+1, wZ,  1,0,0, 0,0,-1);
-    float sl01 = getVertexSkyLight(wX, wY+1, wZ, -1,0,0, 0,0, 1);
-    float sl11 = getVertexSkyLight(wX, wY+1, wZ,  1,0,0, 0,0, 1);
-    float bl00 = getVertexBlockLight(wX, wY+1, wZ, -1,0,0, 0,0,-1);
-    float bl10 = getVertexBlockLight(wX, wY+1, wZ,  1,0,0, 0,0,-1);
-    float bl01 = getVertexBlockLight(wX, wY+1, wZ, -1,0,0, 0,0, 1);
-    float bl11 = getVertexBlockLight(wX, wY+1, wZ,  1,0,0, 0,0, 1);
+    int lyOffset = (yMax < wy + 1.0f - 0.001f) ? 0 : 1;
+    float sl00 = getVertexSkyLight(wX, wY+lyOffset, wZ, -1,0,0, 0,0,-1);
+    float sl10 = getVertexSkyLight(wX, wY+lyOffset, wZ,  1,0,0, 0,0,-1);
+    float sl01 = getVertexSkyLight(wX, wY+lyOffset, wZ, -1,0,0, 0,0, 1);
+    float sl11 = getVertexSkyLight(wX, wY+lyOffset, wZ,  1,0,0, 0,0, 1);
+    float bl00 = getVertexBlockLight(wX, wY+lyOffset, wZ, -1,0,0, 0,0,-1);
+    float bl10 = getVertexBlockLight(wX, wY+lyOffset, wZ,  1,0,0, 0,0,-1);
+    float bl01 = getVertexBlockLight(wX, wY+lyOffset, wZ, -1,0,0, 0,0, 1);
+    float bl11 = getVertexBlockLight(wX, wY+lyOffset, wZ,  1,0,0, 0,0, 1);
     float avgBlk = (bl00+bl10+bl01+bl11)*0.25f;
     float avgSky = (sl00+sl10+sl01+sl11)*0.25f;
 
@@ -824,14 +853,15 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
 
   // BOTTOM (-Y)
   if (needFace(lx, ly, lz, cx, cz, id, 0, -1, 0, isFancy)) {
-    float sl00 = getVertexSkyLight(wX, wY-1, wZ, -1,0,0, 0,0,-1);
-    float sl10 = getVertexSkyLight(wX, wY-1, wZ,  1,0,0, 0,0,-1);
-    float sl01 = getVertexSkyLight(wX, wY-1, wZ, -1,0,0, 0,0, 1);
-    float sl11 = getVertexSkyLight(wX, wY-1, wZ,  1,0,0, 0,0, 1);
-    float bl00 = getVertexBlockLight(wX, wY-1, wZ, -1,0,0, 0,0,-1);
-    float bl10 = getVertexBlockLight(wX, wY-1, wZ,  1,0,0, 0,0,-1);
-    float bl01 = getVertexBlockLight(wX, wY-1, wZ, -1,0,0, 0,0, 1);
-    float bl11 = getVertexBlockLight(wX, wY-1, wZ,  1,0,0, 0,0, 1);
+    int lyOffset = (yMin > wy + 0.001f) ? 0 : -1;
+    float sl00 = getVertexSkyLight(wX, wY+lyOffset, wZ, -1,0,0, 0,0,-1);
+    float sl10 = getVertexSkyLight(wX, wY+lyOffset, wZ,  1,0,0, 0,0,-1);
+    float sl01 = getVertexSkyLight(wX, wY+lyOffset, wZ, -1,0,0, 0,0, 1);
+    float sl11 = getVertexSkyLight(wX, wY+lyOffset, wZ,  1,0,0, 0,0, 1);
+    float bl00 = getVertexBlockLight(wX, wY+lyOffset, wZ, -1,0,0, 0,0,-1);
+    float bl10 = getVertexBlockLight(wX, wY+lyOffset, wZ,  1,0,0, 0,0,-1);
+    float bl01 = getVertexBlockLight(wX, wY+lyOffset, wZ, -1,0,0, 0,0, 1);
+    float bl11 = getVertexBlockLight(wX, wY+lyOffset, wZ,  1,0,0, 0,0, 1);
     float avgBlk=(bl00+bl10+bl01+bl11)*0.25f, avgSky=(sl00+sl10+sl01+sl11)*0.25f;
 
     Tesselator *t = pickTess(m_opaqueTess, m_fancyTess, avgSky, avgBlk, isFancy);
@@ -867,14 +897,15 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
 
   // NORTH (-Z)
   if (needFace(lx, ly, lz, cx, cz, id, 0, 0, -1, isFancy)) {
-    float sl11=getVertexSkyLight(wX,wY,wZ-1, 1,0,0, 0,1,0);
-    float sl01=getVertexSkyLight(wX,wY,wZ-1,-1,0,0, 0,1,0);
-    float sl10=getVertexSkyLight(wX,wY,wZ-1, 1,0,0, 0,-1,0);
-    float sl00=getVertexSkyLight(wX,wY,wZ-1,-1,0,0, 0,-1,0);
-    float bl11=getVertexBlockLight(wX,wY,wZ-1, 1,0,0, 0,1,0);
-    float bl01=getVertexBlockLight(wX,wY,wZ-1,-1,0,0, 0,1,0);
-    float bl10=getVertexBlockLight(wX,wY,wZ-1, 1,0,0, 0,-1,0);
-    float bl00=getVertexBlockLight(wX,wY,wZ-1,-1,0,0, 0,-1,0);
+    int lzOffset = (zMin > wz + 0.001f) ? 0 : -1;
+    float sl11=getVertexSkyLight(wX,wY,wZ+lzOffset, 1,0,0, 0,1,0);
+    float sl01=getVertexSkyLight(wX,wY,wZ+lzOffset,-1,0,0, 0,1,0);
+    float sl10=getVertexSkyLight(wX,wY,wZ+lzOffset, 1,0,0, 0,-1,0);
+    float sl00=getVertexSkyLight(wX,wY,wZ+lzOffset,-1,0,0, 0,-1,0);
+    float bl11=getVertexBlockLight(wX,wY,wZ+lzOffset, 1,0,0, 0,1,0);
+    float bl01=getVertexBlockLight(wX,wY,wZ+lzOffset,-1,0,0, 0,1,0);
+    float bl10=getVertexBlockLight(wX,wY,wZ+lzOffset, 1,0,0, 0,-1,0);
+    float bl00=getVertexBlockLight(wX,wY,wZ+lzOffset,-1,0,0, 0,-1,0);
     float avgBlk=(bl11+bl01+bl10+bl00)*0.25f, avgSky=(sl11+sl01+sl10+sl00)*0.25f;
 
     Tesselator *t=pickTess(m_opaqueTess,m_fancyTess,avgSky,avgBlk,isFancy);
@@ -926,14 +957,15 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
 
   // SOUTH (+Z)
   if (needFace(lx, ly, lz, cx, cz, id, 0, 0, 1, isFancy)) {
-    float sl01=getVertexSkyLight(wX,wY,wZ+1,-1,0,0, 0,1,0);
-    float sl11=getVertexSkyLight(wX,wY,wZ+1, 1,0,0, 0,1,0);
-    float sl00=getVertexSkyLight(wX,wY,wZ+1,-1,0,0, 0,-1,0);
-    float sl10=getVertexSkyLight(wX,wY,wZ+1, 1,0,0, 0,-1,0);
-    float bl01=getVertexBlockLight(wX,wY,wZ+1,-1,0,0, 0,1,0);
-    float bl11=getVertexBlockLight(wX,wY,wZ+1, 1,0,0, 0,1,0);
-    float bl00=getVertexBlockLight(wX,wY,wZ+1,-1,0,0, 0,-1,0);
-    float bl10=getVertexBlockLight(wX,wY,wZ+1, 1,0,0, 0,-1,0);
+    int lzOffset = (zMax < wz + 1.0f - 0.001f) ? 0 : 1;
+    float sl01=getVertexSkyLight(wX,wY,wZ+lzOffset,-1,0,0, 0,1,0);
+    float sl11=getVertexSkyLight(wX,wY,wZ+lzOffset, 1,0,0, 0,1,0);
+    float sl00=getVertexSkyLight(wX,wY,wZ+lzOffset,-1,0,0, 0,-1,0);
+    float sl10=getVertexSkyLight(wX,wY,wZ+lzOffset, 1,0,0, 0,-1,0);
+    float bl01=getVertexBlockLight(wX,wY,wZ+lzOffset,-1,0,0, 0,1,0);
+    float bl11=getVertexBlockLight(wX,wY,wZ+lzOffset, 1,0,0, 0,1,0);
+    float bl00=getVertexBlockLight(wX,wY,wZ+lzOffset,-1,0,0, 0,-1,0);
+    float bl10=getVertexBlockLight(wX,wY,wZ+lzOffset, 1,0,0, 0,-1,0);
     float avgBlk=(bl01+bl11+bl00+bl10)*0.25f, avgSky=(sl01+sl11+sl00+sl10)*0.25f;
 
     Tesselator *t=pickTess(m_opaqueTess,m_fancyTess,avgSky,avgBlk,isFancy);
@@ -985,14 +1017,15 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
 
   // WEST (-X)
   if (needFace(lx, ly, lz, cx, cz, id, -1, 0, 0, isFancy)) {
-    float sl01=getVertexSkyLight(wX-1,wY,wZ, 0,1,0, 0,0,-1);
-    float sl11=getVertexSkyLight(wX-1,wY,wZ, 0,1,0, 0,0, 1);
-    float sl00=getVertexSkyLight(wX-1,wY,wZ, 0,-1,0, 0,0,-1);
-    float sl10=getVertexSkyLight(wX-1,wY,wZ, 0,-1,0, 0,0, 1);
-    float bl01=getVertexBlockLight(wX-1,wY,wZ, 0,1,0, 0,0,-1);
-    float bl11=getVertexBlockLight(wX-1,wY,wZ, 0,1,0, 0,0, 1);
-    float bl00=getVertexBlockLight(wX-1,wY,wZ, 0,-1,0, 0,0,-1);
-    float bl10=getVertexBlockLight(wX-1,wY,wZ, 0,-1,0, 0,0, 1);
+    int lxOffset = (xMin > wx + 0.001f) ? 0 : -1;
+    float sl01=getVertexSkyLight(wX+lxOffset,wY,wZ, 0,1,0, 0,0,-1);
+    float sl11=getVertexSkyLight(wX+lxOffset,wY,wZ, 0,1,0, 0,0, 1);
+    float sl00=getVertexSkyLight(wX+lxOffset,wY,wZ, 0,-1,0, 0,0,-1);
+    float sl10=getVertexSkyLight(wX+lxOffset,wY,wZ, 0,-1,0, 0,0, 1);
+    float bl01=getVertexBlockLight(wX+lxOffset,wY,wZ, 0,1,0, 0,0,-1);
+    float bl11=getVertexBlockLight(wX+lxOffset,wY,wZ, 0,1,0, 0,0, 1);
+    float bl00=getVertexBlockLight(wX+lxOffset,wY,wZ, 0,-1,0, 0,0,-1);
+    float bl10=getVertexBlockLight(wX+lxOffset,wY,wZ, 0,-1,0, 0,0, 1);
     float avgBlk=(bl01+bl11+bl00+bl10)*0.25f, avgSky=(sl01+sl11+sl00+sl10)*0.25f;
 
     Tesselator *t=pickTess(m_opaqueTess,m_fancyTess,avgSky,avgBlk,isFancy);
@@ -1044,14 +1077,15 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
 
   // EAST (+X)
   if (needFace(lx, ly, lz, cx, cz, id, 1, 0, 0, isFancy)) {
-    float sl11=getVertexSkyLight(wX+1,wY,wZ, 0,1,0, 0,0, 1);
-    float sl01=getVertexSkyLight(wX+1,wY,wZ, 0,1,0, 0,0,-1);
-    float sl10=getVertexSkyLight(wX+1,wY,wZ, 0,-1,0, 0,0, 1);
-    float sl00=getVertexSkyLight(wX+1,wY,wZ, 0,-1,0, 0,0,-1);
-    float bl11=getVertexBlockLight(wX+1,wY,wZ, 0,1,0, 0,0, 1);
-    float bl01=getVertexBlockLight(wX+1,wY,wZ, 0,1,0, 0,0,-1);
-    float bl10=getVertexBlockLight(wX+1,wY,wZ, 0,-1,0, 0,0, 1);
-    float bl00=getVertexBlockLight(wX+1,wY,wZ, 0,-1,0, 0,0,-1);
+    int lxOffset = (xMax < wx + 1.0f - 0.001f) ? 0 : 1;
+    float sl11=getVertexSkyLight(wX+lxOffset,wY,wZ, 0,1,0, 0,0, 1);
+    float sl01=getVertexSkyLight(wX+lxOffset,wY,wZ, 0,1,0, 0,0,-1);
+    float sl10=getVertexSkyLight(wX+lxOffset,wY,wZ, 0,-1,0, 0,0, 1);
+    float sl00=getVertexSkyLight(wX+lxOffset,wY,wZ, 0,-1,0, 0,0,-1);
+    float bl11=getVertexBlockLight(wX+lxOffset,wY,wZ, 0,1,0, 0,0, 1);
+    float bl01=getVertexBlockLight(wX+lxOffset,wY,wZ, 0,1,0, 0,0,-1);
+    float bl10=getVertexBlockLight(wX+lxOffset,wY,wZ, 0,-1,0, 0,0, 1);
+    float bl00=getVertexBlockLight(wX+lxOffset,wY,wZ, 0,-1,0, 0,0,-1);
     float avgBlk=(bl11+bl01+bl10+bl00)*0.25f, avgSky=(sl11+sl01+sl10+sl00)*0.25f;
 
     Tesselator *t=pickTess(m_opaqueTess,m_fancyTess,avgSky,avgBlk,isFancy);
