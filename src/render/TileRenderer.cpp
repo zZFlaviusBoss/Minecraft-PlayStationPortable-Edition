@@ -600,22 +600,24 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
     uint32_t botC10 = applyLightToFace(LIGHT_BOT, getVertexSkyLight(wX, wY - 1, wZ,  1, 0, 0, 0, 0, -1));
     uint32_t botC01 = applyLightToFace(LIGHT_BOT, getVertexSkyLight(wX, wY - 1, wZ, -1, 0, 0, 0, 0,  1));
     uint32_t botC11 = applyLightToFace(LIGHT_BOT, getVertexSkyLight(wX, wY - 1, wZ,  1, 0, 0, 0, 0,  1));
-    uint32_t northC11 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ - 1,  1, 0, 0, 0, 1, 0));
-    uint32_t northC01 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ - 1, -1, 0, 0, 0, 1, 0));
-    uint32_t northC10 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ - 1,  1, 0, 0, 0,-1, 0));
-    uint32_t northC00 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ - 1, -1, 0, 0, 0,-1, 0));
-    uint32_t southC01 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ + 1, -1, 0, 0, 0, 1, 0));
-    uint32_t southC11 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ + 1,  1, 0, 0, 0, 1, 0));
-    uint32_t southC00 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ + 1, -1, 0, 0, 0,-1, 0));
-    uint32_t southC10 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ + 1,  1, 0, 0, 0,-1, 0));
-    uint32_t westC01 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX - 1, wY, wZ, 0, 1, 0, 0, 0,-1));
-    uint32_t westC11 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX - 1, wY, wZ, 0, 1, 0, 0, 0, 1));
-    uint32_t westC00 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX - 1, wY, wZ, 0,-1, 0, 0, 0,-1));
-    uint32_t westC10 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX - 1, wY, wZ, 0,-1, 0, 0, 0, 1));
-    uint32_t eastC11 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX + 1, wY, wZ, 0, 1, 0, 0, 0, 1));
-    uint32_t eastC01 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX + 1, wY, wZ, 0, 1, 0, 0, 0,-1));
-    uint32_t eastC10 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX + 1, wY, wZ, 0,-1, 0, 0, 0, 1));
-    uint32_t eastC00 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX + 1, wY, wZ, 0,-1, 0, 0, 0,-1));
+    const int sideTopY = upsideDown ? -1 : 1;
+    const int sideBottomY = upsideDown ? 1 : -1;
+    uint32_t northC11 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ - 1,  1, 0, 0, 0, sideTopY, 0));
+    uint32_t northC01 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ - 1, -1, 0, 0, 0, sideTopY, 0));
+    uint32_t northC10 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ - 1,  1, 0, 0, 0, sideBottomY, 0));
+    uint32_t northC00 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ - 1, -1, 0, 0, 0, sideBottomY, 0));
+    uint32_t southC01 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ + 1, -1, 0, 0, 0, sideTopY, 0));
+    uint32_t southC11 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ + 1,  1, 0, 0, 0, sideTopY, 0));
+    uint32_t southC00 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ + 1, -1, 0, 0, 0, sideBottomY, 0));
+    uint32_t southC10 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX, wY, wZ + 1,  1, 0, 0, 0, sideBottomY, 0));
+    uint32_t westC01 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX - 1, wY, wZ, 0, sideTopY, 0, 0, 0,-1));
+    uint32_t westC11 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX - 1, wY, wZ, 0, sideTopY, 0, 0, 0, 1));
+    uint32_t westC00 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX - 1, wY, wZ, 0, sideBottomY, 0, 0, 0,-1));
+    uint32_t westC10 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX - 1, wY, wZ, 0, sideBottomY, 0, 0, 0, 1));
+    uint32_t eastC11 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX + 1, wY, wZ, 0, sideTopY, 0, 0, 0, 1));
+    uint32_t eastC01 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX + 1, wY, wZ, 0, sideTopY, 0, 0, 0,-1));
+    uint32_t eastC10 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX + 1, wY, wZ, 0, sideBottomY, 0, 0, 0, 1));
+    uint32_t eastC00 = applyLightToFace(LIGHT_SIDE, getVertexSkyLight(wX + 1, wY, wZ, 0, sideBottomY, 0, 0, 0,-1));
     auto lerpColor = [](uint32_t a, uint32_t b, float t) -> uint32_t {
       uint8_t aa = (a >> 24) & 0xFF, ba = (b >> 24) & 0xFF;
       uint8_t ab = (a >> 16) & 0xFF, bb = (b >> 16) & 0xFF;
@@ -633,8 +635,9 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
     uint32_t eastMidZ0 = lerpColor(eastC00, eastC01, 0.5f);
     uint32_t northMidR = lerpColor(northC10, northC11, 0.5f);
     uint32_t northMidL = lerpColor(northC00, northC01, 0.5f);
-    // After Y mirroring, "top" step planes become downward-facing undersides
-    // and the original bottom plane becomes the exposed top.
+    // For upside-down stairs Y-mirroring swaps which horizontal planes are
+    // exposed to the player: use top-light for the exposed top and bottom-light
+    // for the hidden underside.
     uint32_t stepTopC00 = upsideDown ? botC00 : topC00;
     uint32_t stepTopC10 = upsideDown ? botC10 : topC10;
     uint32_t stepTopC01 = upsideDown ? botC01 : topC01;
