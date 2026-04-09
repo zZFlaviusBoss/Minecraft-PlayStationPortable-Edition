@@ -963,6 +963,56 @@ static void game_render() {
       Mth::sin(pitchRad),                    // Y
       Mth::cos(yawRad) * Mth::cos(pitchRad)  // Z
   };
+  ScePspFVector3 camUp = {0.0f, 1.0f, 0.0f};
+
+  // MCPE 0.6.1 bobView() port:
+  // translate(sin(b*pi)*bob*0.5, -abs(cos(b*pi)*bob), 0)
+  // rotateZ(sin(b*pi)*bob*3), rotateX(abs(cos(b*pi-0.2)*bob)*5), rotateX(tilt)
+  if (g_player && !g_player->isFlyingCreative()) {
+    const float wda = g_player->getWalkDist() - g_player->getWalkDistO();
+    const float b = -(g_player->getWalkDist() + wda);
+    const float bobNow = g_player->getBob();
+    const float tiltNow = g_player->getTilt();
+    const float sinB = Mth::sin(b * Mth::PI_VAL);
+    const float cosB = Mth::cos(b * Mth::PI_VAL);
+    const float xBob = sinB * bobNow * 0.5f;
+    const float yBob = -fabsf(cosB * bobNow);
+    const float zRoll = sinB * bobNow * 3.0f;
+    const float xPitch = fabsf(Mth::cos(b * Mth::PI_VAL - 0.2f) * bobNow) * 5.0f + tiltNow;
+
+    // Side + up offsets in camera-local space.
+    const ScePspFVector3 side = {Mth::cos(yawRad), 0.0f, -Mth::sin(yawRad)};
+    camPos.x += side.x * xBob;
+    camPos.z += side.z * xBob;
+    camPos.y += yBob;
+
+    // Apply additional pitch around side axis.
+    const float pitchAdd = xPitch * Mth::DEGRAD;
+    const float cP = Mth::cos(pitchAdd);
+    const float sP = Mth::sin(pitchAdd);
+    ScePspFVector3 dirP = {
+        lookDir.x * cP + camUp.x * sP,
+        lookDir.y * cP + camUp.y * sP,
+        lookDir.z * cP + camUp.z * sP
+    };
+    ScePspFVector3 upP = {
+        camUp.x * cP - lookDir.x * sP,
+        camUp.y * cP - lookDir.y * sP,
+        camUp.z * cP - lookDir.z * sP
+    };
+    lookDir = dirP;
+    camUp = upP;
+
+    // Apply roll around forward axis to preserve MCPE z-rotation sway.
+    const float roll = zRoll * Mth::DEGRAD;
+    const float cR = Mth::cos(roll);
+    const float sR = Mth::sin(roll);
+    camUp = {
+        camUp.x * cR - side.x * sR,
+        camUp.y * cR - side.y * sR,
+        camUp.z * cR - side.z * sR
+    };
+  }
 
   ScePspFVector3 lookAt = {camPos.x + lookDir.x, camPos.y + lookDir.y,
                            camPos.z + lookDir.z};
@@ -1020,7 +1070,7 @@ static void game_render() {
 
   PSPRenderer_BeginFrame(clearColor, fogNear, fogFar, fogColor, fov);
 
-  PSPRenderer_SetCamera(&camPos, &lookAt);
+  PSPRenderer_SetCamera(&camPos, &lookAt, &camUp);
 
   if (g_skyRenderer) {
     if (g_player) {

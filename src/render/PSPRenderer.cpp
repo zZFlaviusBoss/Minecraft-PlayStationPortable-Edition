@@ -111,10 +111,12 @@ void PSPRenderer_BeginFrame(uint32_t skyColor, float fogNear, float fogFar, uint
 }
 
 void PSPRenderer_SetCamera(const ScePspFVector3 *eye,
-                           const ScePspFVector3 *center) {
+                           const ScePspFVector3 *center,
+                           const ScePspFVector3 *upVec) {
   sceGumMatrixMode(GU_VIEW);
   sceGumLoadIdentity();
   ScePspFVector3 up = {0.0f, 1.0f, 0.0f};
+  if (upVec) up = *upVec;
   sceGumLookAt(const_cast<ScePspFVector3 *>(eye),
                const_cast<ScePspFVector3 *>(center), &up);
   sceGumUpdateMatrix();

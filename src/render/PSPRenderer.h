@@ -7,7 +7,8 @@
 bool PSPRenderer_Init();
 void PSPRenderer_BeginFrame(uint32_t skyColor, float fogNear, float fogFar, uint32_t fogColor, float fov);
 void PSPRenderer_SetCamera(const ScePspFVector3 *eye,
-                           const ScePspFVector3 *center);
+                           const ScePspFVector3 *center,
+                           const ScePspFVector3 *up = nullptr);
 
 void PSPRenderer_GetViewProjMatrix(ScePspFMatrix4 *outVP);
 
