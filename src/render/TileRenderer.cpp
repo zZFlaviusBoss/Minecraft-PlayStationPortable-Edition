@@ -611,7 +611,6 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
       }
       rotateLocal(x00, z00); rotateLocal(x10, z10); rotateLocal(x01, z01); rotateLocal(x11, z11);
       
-      uint32_t c00 = (uint32_t)c00_p, c10 = (uint32_t)c10_p, c01 = (uint32_t)c01_p, c11 = (uint32_t)c11_p;
       if (upsideDown) {
         dst->addQuadReversed(u0, v0, u1, v1, c00, c10, c01, c11,
                              x00, y00, z00, x10, y10, z10, x01, y01, z01, x11, y11, z11);
@@ -850,7 +849,7 @@ bool TileRenderer::tesselateBlockInWorld(uint8_t id, int lx, int ly, int lz, int
     }
 
     // Internal riser at z = 0.5
-    addQuadRot(uSide0, vSide0, uSide1, vSideHalf, midNorthC11, midNorthC01, northMidR, northMidL,
+    addQuadRot(uSide0, vSide0, uSide1, vSideHalf, northC11, northC01, northMidR, northMidL,
                wx + 1.0f, wy + 1.0f, wz + 0.5f, wx, wy + 1.0f, wz + 0.5f,
                wx + 1.0f, wy + 0.5f, wz + 0.5f, wx, wy + 0.5f, wz + 0.5f);
     if (stairEmit) addQuadRotTo(m_emitTess, uSide0, vSide0, uSide1, vSideHalf, eNorthC11, eNorthC01, eNorthMidR, eNorthMidL,
