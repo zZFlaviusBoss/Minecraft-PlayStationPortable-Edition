@@ -665,6 +665,9 @@ void Level::processFallCheck(int wx, int wy, int wz) {
 
   setBlock(wx, wy, wz, BLOCK_AIR);
   FallingBlockEntity e;
+  e.prevX = (float)wx + 0.5f;
+  e.prevY = (float)wy + 0.5f;
+  e.prevZ = (float)wz + 0.5f;
   e.x = (float)wx + 0.5f;
   e.y = (float)wy + 0.5f;
   e.z = (float)wz + 0.5f;
@@ -701,6 +704,9 @@ void Level::tickFallingBlocks() {
   for (size_t i = 0; i < m_fallingBlocks.size(); ++i) {
     FallingBlockEntity &e = m_fallingBlocks[i];
     if (e.removed) continue;
+    e.prevX = e.x;
+    e.prevY = e.y;
+    e.prevZ = e.z;
     e.age++;
     e.yd -= 0.04f;
     e.x += e.xd;

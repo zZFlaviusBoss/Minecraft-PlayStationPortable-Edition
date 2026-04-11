@@ -14,6 +14,7 @@ static const long long TICKS_PER_DAY = 24000LL;
 class Level {
 public:
   struct FallingBlockEntity {
+    float prevX, prevY, prevZ;
     float x, y, z;
     float xd, yd, zd;
     uint8_t id;

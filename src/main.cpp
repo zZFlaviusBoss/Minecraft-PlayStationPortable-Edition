@@ -69,6 +69,8 @@ static TextureAtlas *g_atlas = nullptr;
 static ConsoleMainMenu g_consoleMenu;
 static WorldLoadingScreen g_loadingScreen;
 static bool g_gameInitialized = false;
+static float g_levelTickAccum = 0.0f;
+static float g_levelTickAlpha = 0.0f;
 
 // HUD UI state
 static BitmapFont g_font;
@@ -328,11 +330,10 @@ static void game_update(float dt) {
   }
 
   if (g_level) {
-    static float s_levelTickAccum = 0.0f;
     const float tickStep = 1.0f / 20.0f;
-    s_levelTickAccum += dt;
-    if (s_levelTickAccum > 0.25f) s_levelTickAccum = 0.25f;
-    while (s_levelTickAccum >= tickStep) {
+    g_levelTickAccum += dt;
+    if (g_levelTickAccum > 0.25f) g_levelTickAccum = 0.25f;
+    while (g_levelTickAccum >= tickStep) {
       if (g_player) {
         g_level->setSimulationFocus((int)floorf(g_player->getX()),
                                     (int)floorf(g_player->getY()),
@@ -340,8 +341,11 @@ static void game_update(float dt) {
                                     24);
       }
       g_level->tick();
-      s_levelTickAccum -= tickStep;
+      g_levelTickAccum -= tickStep;
     }
+    g_levelTickAlpha = g_levelTickAccum / tickStep;
+    if (g_levelTickAlpha < 0.0f) g_levelTickAlpha = 0.0f;
+    if (g_levelTickAlpha > 1.0f) g_levelTickAlpha = 1.0f;
   }
 
   // Animation for WATER blocks
@@ -924,8 +928,11 @@ static void renderFallingBlocks() {
     const size_t idx = visibleIndices[i];
     const Level::FallingBlockEntity &e = falling[idx];
     const FallingUVSet &uv = s_fallingUV[e.id];
-    const float x0 = e.x - 0.49f, y0 = e.y - 0.49f, z0 = e.z - 0.49f;
-    const float x1 = e.x + 0.49f, y1 = e.y + 0.49f, z1 = e.z + 0.49f;
+    const float rx = e.prevX + (e.x - e.prevX) * g_levelTickAlpha;
+    const float ry = e.prevY + (e.y - e.prevY) * g_levelTickAlpha;
+    const float rz = e.prevZ + (e.z - e.prevZ) * g_levelTickAlpha;
+    const float x0 = rx - 0.49f, y0 = ry - 0.49f, z0 = rz - 0.49f;
+    const float x1 = rx + 0.49f, y1 = ry + 0.49f, z1 = rz + 0.49f;
 
     // Top
     addFace(x0, y1, z0, x1, y1, z0, x1, y1, z1, x0, y1, z1, uv.tu0, uv.tv0, uv.tu1, uv.tv1, topCol);
